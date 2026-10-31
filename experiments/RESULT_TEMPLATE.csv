@@ -1,0 +1,1 @@
+experiment,event_id,fault_type,device_id,started_at_utc,detected_at_utc,recovered_at_utc,detection_seconds,latency_basis,ai_response_seconds,ai_status,notes

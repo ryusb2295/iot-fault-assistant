@@ -8,7 +8,7 @@ import time
 
 import paho.mqtt.client as mqtt
 
-from .config import DB_PATH, MQTT_HOST, MQTT_PORT, REQUEST_INTERVAL, RESPONSE_TOPIC, REQUEST_TOPIC, STATUS_TOPIC
+from .config import DB_PATH, MQTT_HOST, MQTT_PORT, MQTT_USERNAME, MQTT_PASSWORD, REQUEST_INTERVAL, RESPONSE_TOPIC, REQUEST_TOPIC, STATUS_TOPIC
 from .db import Repository
 from .engine import FaultEngine
 
@@ -19,6 +19,10 @@ logger = logging.getLogger(__name__)
 def main():
     engine = FaultEngine(Repository(DB_PATH))
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="fault-monitor-rpi-01")
+    if MQTT_PASSWORD and not MQTT_USERNAME:
+        raise ValueError("MQTT_PASSWORD를 설정하려면 MQTT_USERNAME도 필요합니다")
+    if MQTT_USERNAME:
+        client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD or None)
 
     def on_connect(client, _userdata, _flags, reason_code, _properties):
         if reason_code.is_failure:

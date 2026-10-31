@@ -1,11 +1,11 @@
 ﻿# IoT 설비 통신 장애 대응 지원 시스템
 
-MQTT 설비 메시지를 수집하고 통신 이상을 감지해, 운영자가 Vue 대시보드에서 장애 이력과 조치 내역을 확인하는 로컬 개발 프로젝트입니다. 현재 PC의 `RPI-01` 시뮬레이터로 Raspberry Pi 5 연동 전 통신 장애 시나리오를 검증합니다.
+MQTT 설비 메시지를 수집하고 통신 이상을 감지해, 운영자가 Vue 대시보드에서 장애 이력과 조치 내역을 확인하는 로컬 개발 프로젝트입니다. PC의 `RPI-01` 시뮬레이터로 통신 장애 시나리오를 검증했으며, Raspberry Pi 5 실기기 실행 절차는 [연동 가이드](RASPBERRY_PI_SETUP.md)에 정리했습니다.
 
 ## 시스템 아키텍처
 
 ```text
-PC 장치 시뮬레이터 (향후 Raspberry Pi 5 / STM32)
+PC 장치 시뮬레이터 또는 Raspberry Pi 5 에이전트 (STM32는 향후 연동)
     ↕ MQTT: factory/RPI-01/{status,request,response}
 Mosquitto broker
     ↕
@@ -27,7 +27,9 @@ Vue 3, Vite, Element Plus, ECharts, Axios / Python FastAPI, Uvicorn, paho-mqtt, 
 ```text
 backend/         API(main.py), MQTT 수신(mqtt_worker.py), 감지(engine.py), DB(db.py), 설정(config.py)
 frontend/        Vue 앱(src/), Vite 설정, npm 의존성
-raspberry_pi/    PC용 MQTT 장치 시뮬레이터
+raspberry_pi/    PC/Raspberry Pi OS 공용 MQTT 장치 에이전트
+scripts/         실험 시각·AI 응답 시간 CSV 기록
+experiments/     실험 결과 기록 양식 (실제 결과는 Git 제외)
 tests/           백엔드 테스트
 requirements.txt
 .env.example     환경변수 예시 (자동 로드되지 않음)
@@ -77,7 +79,9 @@ npm run dev
 
 **구현 완료:** `manuals/`의 장애 유형별 실습용 매뉴얼 검색, 실제 장애 로그와 검색 문서를 참고하는 Ollama AI 점검 안내 API, Vue 장애 상세 화면의 AI 응답 및 문서 제목·절·줄 위치 표시. AI 응답은 규칙 엔진의 판정과 별개입니다. 조치 사례는 여전히 실습용 예시 데이터입니다.
 
-**개발 예정:** Raspberry Pi 5 및 STM32 실기기 연동, 실제 운영 매뉴얼과 조치 사례 축적.
+**실기기 준비 완료:** Raspberry Pi OS용 MQTT 인증·재연결·선택적 CPU 온도 발행 코드와 설치·실험 가이드. 실제 Pi Ethernet 단절·재연결 검증은 아직 수행하지 않았습니다.
+
+**개발 예정:** 실제 Raspberry Pi 5 실기기 연결 검증, STM32 연동, 실제 운영 매뉴얼과 조치 사례 축적.
 
 ## 로컬 AI 점검 안내
 
