@@ -5,8 +5,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from .config import DB_PATH, DEVICE_ID, STATUS_TOPIC
+from .config import DB_PATH, DEVICE_ID, STATUS_TOPIC, OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TIMEOUT_SECONDS
 from .db import Repository, utc_now
+from . import rag
 
 TYPE_TO_UI = {
     "CONNECTION_TIMEOUT": "message_timeout",
@@ -104,6 +105,23 @@ def create_app(repo=None):
         if not repository.get_event(event_id):
             raise HTTPException(404, "장애를 찾을 수 없습니다")
         return [log_json(row) for row in repository.get_event_logs(event_id)]
+
+    @app.get("/api/manuals")
+    def manuals():
+        return rag.list_manuals()
+
+    @app.get("/api/events/{event_id}/ai-guidance")
+    def ai_guidance(event_id: int):
+        row = repository.get_event(event_id)
+        if not row:
+            raise HTTPException(404, "장애를 찾을 수 없습니다")
+        logs = repository.get_event_logs(event_id)
+        evidence = rag.search(row["fault_type"], f"{row['description']} " + " ".join(
+            log["validation_result"] for log in logs[-8:]))
+        result = rag.generate(row, logs, evidence, base_url=OLLAMA_BASE_URL,
+                              model=OLLAMA_MODEL, timeout=OLLAMA_TIMEOUT_SECONDS)
+        return {"eventId": event_id, "faultType": row["fault_type"], "origin": "ollama" if result["status"] == "ready" else "none",
+                "model": OLLAMA_MODEL if result["status"] == "ready" else None, **result}
 
     @app.post("/api/events/{event_id}/actions", status_code=201)
     def add_action(event_id: int, payload: ActionIn):

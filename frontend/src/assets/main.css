@@ -236,6 +236,9 @@ code, pre { font-family: Consolas, 'Courier New', monospace; }
 .knowledge-top h4 { margin: 4px 0 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
 .knowledge-card ol { margin: 11px 0 0; padding-left: 19px; color: #657287; font-size: 12px; line-height: 1.65; }
 .knowledge-card p { margin: 11px 0 0; color: #657287; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.ai-answer { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ai-sources { margin-top: 12px; font-size: 12px; color: #657287; }
+.ai-sources ul { margin: 6px 0 0; padding-left: 18px; line-height: 1.6; }
 
 /* Element Plus follows the same size and type scale. */
 .el-button { height: 32px; padding: 0 12px; font-size: 12px; font-weight: 500; }

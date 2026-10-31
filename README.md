@@ -20,7 +20,7 @@ MQTT 수신 프로세스와 FastAPI 서버는 별도로 실행하며 같은 SQLi
 
 ## 기술 스택
 
-Vue 3, Vite, Element Plus, ECharts, Axios / Python FastAPI, Uvicorn, paho-mqtt / Mosquitto / SQLite. Ollama 기반 로컬 LLM과 Raspberry Pi 5 및 STM32 실기기 연동은 개발 예정입니다.
+Vue 3, Vite, Element Plus, ECharts, Axios / Python FastAPI, Uvicorn, paho-mqtt, httpx / Mosquitto / SQLite / Ollama 로컬 LLM. Raspberry Pi 5 및 STM32 실기기 연동은 개발 예정입니다.
 
 ## 폴더 구조
 
@@ -75,4 +75,20 @@ npm run dev
 
 **구현 완료:** MQTT 상태·요청·응답 수신, 규칙 기반 연결 시간 초과·응답 지연·메시지 형식 오류 감지, SQLite 장애·로그·조치 기록, FastAPI 조회 및 조치 API, Vue 대시보드·장치·장애 화면, PC 장치 시뮬레이터의 네 가지 모드. 테스트는 `.\.venv\Scripts\python.exe -m pytest -q`로 실행합니다.
 
-**개발 예정:** Ollama 로컬 LLM을 이용한 장애 대응 지원, 지식 문서의 실제 저장·검색, Raspberry Pi 5 및 STM32 실기기 연동. 현재 지식 화면의 매뉴얼·사례와 AI 설명은 예시 데이터이며, 실제 LLM 연동 기능이 아닙니다.
+**구현 완료:** `manuals/`의 장애 유형별 실습용 매뉴얼 검색, 실제 장애 로그와 검색 문서를 참고하는 Ollama AI 점검 안내 API, Vue 장애 상세 화면의 AI 응답 및 문서 제목·절·줄 위치 표시. AI 응답은 규칙 엔진의 판정과 별개입니다. 조치 사례는 여전히 실습용 예시 데이터입니다.
+
+**개발 예정:** Raspberry Pi 5 및 STM32 실기기 연동, 실제 운영 매뉴얼과 조치 사례 축적.
+
+## 로컬 AI 점검 안내
+
+Ollama를 설치해 서버를 실행하고 `exaone3.5:2.4b` 모델을 준비합니다. 이미 Ollama가 실행 중이면 서버 명령은 생략합니다.
+
+```powershell
+ollama serve
+ollama pull exaone3.5:2.4b
+ollama list
+```
+
+기본 API 주소는 `http://127.0.0.1:11434`입니다. 다른 주소나 모델을 사용하려면 FastAPI 실행 창에서 `$env:OLLAMA_BASE_URL`, `$env:OLLAMA_MODEL`, `$env:OLLAMA_TIMEOUT_SECONDS`를 설정합니다. 기본 생성 제한은 60초입니다. Ollama 서버가 없거나 시간 초과가 나면 AI 안내만 사용 불가로 표시하며, MQTT 수신과 장애 판정·조회 API는 계속 작동합니다. 상세 화면의 **다시 생성** 버튼으로 재시도할 수 있습니다.
+
+`GET /api/manuals`는 실제 `manuals/*.md` 문서에서 점검 순서를 읽습니다. `GET /api/events/{id}/ai-guidance`는 해당 장애 유형의 문서 절을 검색하고 연결된 로그와 함께 로컬 모델에 전달합니다. 응답의 `sources`는 검색된 문서의 제목, 절, 파일 및 줄 위치를 담습니다. 매뉴얼이 없으면 모델을 호출하지 않고 근거 부족으로 답합니다. AI 문장은 가능한 점검 가설이므로 현장 조치와 복구 판단은 실제 로그로 확인해야 합니다.

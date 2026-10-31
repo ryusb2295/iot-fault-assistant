@@ -8,7 +8,7 @@ const client = axios.create({ baseURL: import.meta.env.VITE_API_BASE_URL || '/ap
 export const connectionState = ref(useApi ? 'checking' : 'mock')
 client.interceptors.response.use(
   (response) => { connectionState.value = 'connected'; return response },
-  (error) => { connectionState.value = 'error'; return Promise.reject(error) },
+  (error) => { if (!error.config?.url?.includes('/ai-guidance')) connectionState.value = 'error'; return Promise.reject(error) },
 )
 const copy = (value) => structuredClone(value)
 const read = async (path, mockValue) => useApi ? (await client.get(path)).data : copy(mockValue)
@@ -30,8 +30,9 @@ export const getDevice = () => read('/devices/RPI-01', useApi ? device : {
 export const getEvents = () => read('/events', events)
 export const getEvent = async (id) => useApi ? (await client.get(`/events/${encodeURIComponent(id)}`)).data : copy(events.find((item) => item.id === id) || null)
 // Knowledge documents remain explicitly labeled practice data until phase 3.
-export const getManuals = async () => copy(manuals)
+export const getManuals = async () => useApi ? (await client.get('/manuals')).data : copy(manuals)
 export const getCases = async () => copy(cases)
+export const getAiGuidance = async (id) => useApi ? (await client.get(`/events/${encodeURIComponent(id)}/ai-guidance`, { timeout: 65000 })).data : null
 export const getEventLogs = (id) => read(`/events/${encodeURIComponent(id)}/logs`, id === 'EVT-20261027-006' ? logs : [])
 export const getRecentActions = () => read('/actions/recent', recentActions)
 export const getChartPoints = () => read('/metrics/events', chartPoints)
