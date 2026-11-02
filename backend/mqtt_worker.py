@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    engine = FaultEngine(Repository(DB_PATH))
+    repository = Repository(DB_PATH)
+    engine = FaultEngine(repository)
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="fault-monitor-rpi-01")
     if MQTT_PASSWORD and not MQTT_USERNAME:
         raise ValueError("MQTT_PASSWORD를 설정하려면 MQTT_USERNAME도 필요합니다")
@@ -27,9 +28,16 @@ def main():
     def on_connect(client, _userdata, _flags, reason_code, _properties):
         if reason_code.is_failure:
             logger.error("MQTT 연결 실패: %s", reason_code)
+            repository.update_worker_runtime(False)
             return
+        repository.update_worker_runtime(True)
+        with engine.lock:
+            engine.last_valid_mono = time.monotonic()
         client.subscribe([(STATUS_TOPIC, 1), (RESPONSE_TOPIC, 1)])
         logger.info("MQTT 구독 시작: %s, %s", STATUS_TOPIC, RESPONSE_TOPIC)
+
+    def on_disconnect(_client, _userdata, _flags, _reason_code, _properties):
+        repository.update_worker_runtime(False)
 
     def on_message(_client, _userdata, message):
         if message.topic == STATUS_TOPIC:
@@ -40,15 +48,19 @@ def main():
             logger.info("응답 메시지 %s", "처리" if valid else "형식 오류")
 
     client.on_connect = on_connect
+    client.on_disconnect = on_disconnect
     client.on_message = on_message
     logger.info("브로커 연결: %s:%s", MQTT_HOST, MQTT_PORT)
-    client.connect(MQTT_HOST, MQTT_PORT, keepalive=30)
+    client.connect_async(MQTT_HOST, MQTT_PORT, keepalive=30)
     client.loop_start()
     next_request = time.monotonic() + 2
     try:
         while True:
-            engine.tick()
-            if client.is_connected() and time.monotonic() >= next_request:
+            connected = client.is_connected()
+            repository.update_worker_runtime(connected)
+            if connected:
+                engine.tick()
+            if connected and time.monotonic() >= next_request:
                 payload = engine.register_request()
                 result = client.publish(REQUEST_TOPIC, json.dumps(payload), qos=1)
                 if result.rc != mqtt.MQTT_ERR_SUCCESS:
@@ -59,6 +71,7 @@ def main():
     except KeyboardInterrupt:
         logger.info("MQTT 수신기를 종료합니다")
     finally:
+        repository.update_worker_runtime(False)
         client.loop_stop()
         client.disconnect()
 

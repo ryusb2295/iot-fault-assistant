@@ -73,6 +73,10 @@ npm run dev
 
 브라우저에서 Vite가 안내하는 주소(기본 `http://localhost:5173`)로 접속합니다. API 문서는 `http://127.0.0.1:8000/docs`, 상태 확인은 `http://127.0.0.1:8000/api/health`입니다. Mosquitto 설치 경로가 다르면 실제 경로를 사용하세요. 시뮬레이터의 `--mode`는 `normal`, `disconnect`, `delay`, `invalid` 중 하나입니다. Raspberry Pi 등 다른 호스트에서 시뮬레이터를 실행할 때는 `--host`에 브로커 IP를 지정할 수 있습니다.
 
+`/api/health`의 `status`는 FastAPI 요청 처리 상태입니다. `worker`, `broker`, `deviceHeartbeat`, `overall`은 별도 상태입니다. Worker의 DB heartbeat가 3초 넘게 갱신되지 않으면 `stopped`로 표시하고, 이때 Broker·장치 상태는 `unknown`입니다. Worker가 살아 있으나 Broker 연결이 끊기면 장치 상태도 `unknown`이며 장치 고장으로 단정하지 않습니다. Broker가 연결된 상태에서 유효한 장치 상태 메시지가 10초 이상 없으면 `timeout`입니다. 장치 ID와 Topic은 PC 실습에서도 기존 `RPI-01`, `factory/RPI-01/*`를 유지합니다.
+
+실험 기록은 운영 DB 대신 `IOT_DB_PATH`로 분리한 실습 DB를 사용하세요. `scripts/record_experiment.py`에 동일 장애 유형의 서로 다른 이벤트 ID 5개와 `--require-five`를 주면 각 실행을 CSV 한 행으로 기록합니다. `CONNECTION_TIMEOUT`은 마지막 유효 상태 메시지 수신부터 탐지까지, `RESPONSE_DELAY`는 요청 등록부터 지연 탐지까지 측정합니다. `INVALID_MESSAGE`는 수신과 판정이 같은 시각 해상도에 기록되므로 소요 시간을 빈 값과 `측정 불가`로 남깁니다. AI 시간은 HTTP 요청 시작부터 응답 종료까지의 벽시계 시간이며 `ai_status=ready`인 행만 실제 AI 응답 성공으로 해석합니다. CSV의 빈 값과 요청 오류는 0초 처리로 해석하지 않습니다. 실험 CSV는 Git에서 제외합니다.
+
 ## 구현 상태
 
 **구현 완료:** MQTT 상태·요청·응답 수신, 규칙 기반 연결 시간 초과·응답 지연·메시지 형식 오류 감지, SQLite 장애·로그·조치 기록, FastAPI 조회 및 조치 API, Vue 대시보드·장치·장애 화면, PC 장치 시뮬레이터의 네 가지 모드. 테스트는 `.\.venv\Scripts\python.exe -m pytest -q`로 실행합니다.

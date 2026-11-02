@@ -230,7 +230,7 @@ def test_api_shape_and_action_record(system):
     client = TestClient(create_app(repo))
     assert client.get("/api/health").json()["status"] == "ok"
     assert client.get("/api/dashboard").json()["faults"] == 1
-    assert client.get("/api/devices/RPI-01").json()["status"] == "fault"
+    assert client.get("/api/devices/RPI-01").json()["status"] == "unknown"
     event = client.get("/api/events").json()[0]
     assert event["type"] == "message_timeout"
     assert event["status"] == "open"

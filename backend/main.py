@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,6 +8,27 @@ from pydantic import BaseModel, Field
 from .config import DB_PATH, DEVICE_ID, STATUS_TOPIC, OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TIMEOUT_SECONDS
 from .db import Repository, utc_now
 from . import rag
+
+WORKER_STALE_SECONDS = 3
+DEVICE_TIMEOUT_SECONDS = 10
+
+
+def monitoring_state(repository):
+    now = datetime.now(timezone.utc)
+    runtime = repository.get_worker_runtime()
+    worker = "running" if runtime and (now - datetime.fromisoformat(runtime["heartbeat_at"])).total_seconds() <= WORKER_STALE_SECONDS else "stopped"
+    broker = ("connected" if runtime["broker_connected"] else "disconnected") if worker == "running" else "unknown"
+    device = repository.get_device(DEVICE_ID)
+    last_seen = device["last_seen"] if device else None
+    if worker != "running" or broker != "connected":
+        heartbeat = "unknown"
+    elif not last_seen:
+        heartbeat = "waiting"
+    elif (now - datetime.fromisoformat(last_seen)).total_seconds() >= DEVICE_TIMEOUT_SECONDS:
+        heartbeat = "timeout"
+    else:
+        heartbeat = "normal"
+    return {"worker": worker, "broker": broker, "deviceHeartbeat": heartbeat}
 
 TYPE_TO_UI = {
     "CONNECTION_TIMEOUT": "message_timeout",
@@ -32,10 +53,11 @@ def event_json(row):
     }
 
 
-def device_json(row):
+def device_json(row, heartbeat="unknown"):
+    effective = "normal" if heartbeat == "normal" else "fault" if heartbeat == "timeout" else "unknown"
     return {
-        "id": row["device_id"], "name": "라즈베리파이 5 설비",
-        "status": "normal" if row["status"] == "NORMAL" else "unknown" if row["status"] == "UNKNOWN" else "fault",
+        "id": row["device_id"], "name": "PC MQTT 시뮬레이터",
+        "status": effective,
         "rawStatus": row["status"], "lastReceivedAt": row["last_seen"],
         "intervalSeconds": 2, "topic": STATUS_TOPIC,
         "recentMessage": json.loads(row["recent_message"]) if row["recent_message"] else None,
@@ -70,22 +92,28 @@ def create_app(repo=None):
     @app.get("/api/health")
     def health():
         repository.dashboard_counts()
-        return {"status": "ok", "database": "ready", "mqtt": "separate process"}
+        state = monitoring_state(repository)
+        return {"status": "ok", "database": "ready", "api": "running", **state,
+                "overall": "ok" if state == {"worker": "running", "broker": "connected", "deviceHeartbeat": "normal"} else "degraded"}
 
     @app.get("/api/dashboard")
     def dashboard():
-        return repository.dashboard_counts()
+        counts = repository.dashboard_counts()
+        if monitoring_state(repository)["deviceHeartbeat"] != "normal":
+            counts["normalDevices"] = 0
+        return counts
 
     @app.get("/api/devices")
     def devices():
-        return [device_json(row) for row in repository.list_devices()]
+        heartbeat = monitoring_state(repository)["deviceHeartbeat"]
+        return [device_json(row, heartbeat) for row in repository.list_devices()]
 
     @app.get("/api/devices/{device_id}")
     def device(device_id: str):
         row = repository.get_device(device_id)
         if not row:
             raise HTTPException(404, "장치를 찾을 수 없습니다")
-        return device_json(row)
+        return device_json(row, monitoring_state(repository)["deviceHeartbeat"])
 
     @app.get("/api/events")
     def events():

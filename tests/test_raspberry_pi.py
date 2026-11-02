@@ -50,5 +50,6 @@ def test_experiment_cli_writes_csv_without_calling_ai(tmp_path, monkeypatch):
         row = next(csv.DictReader(file))
     assert row["experiment"] == "invalid-01"
     assert row["fault_type"] == "INVALID_MESSAGE"
-    assert row["detection_seconds"] == "0.0"
+    assert row["detection_seconds"] == ""
+    assert "측정 불가" in row["latency_basis"]
     assert row["ai_status"] == "not_tested"

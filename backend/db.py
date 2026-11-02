@@ -82,7 +82,24 @@ class Repository:
                     created_at TEXT NOT NULL,
                     FOREIGN KEY(event_id) REFERENCES fault_events(id)
                 );
+                CREATE TABLE IF NOT EXISTS worker_runtime (
+                    id INTEGER PRIMARY KEY CHECK(id=1),
+                    heartbeat_at TEXT NOT NULL,
+                    broker_connected INTEGER NOT NULL
+                );
             """)
+
+    def update_worker_runtime(self, connected, at=None):
+        with self.connection() as db:
+            db.execute("""INSERT INTO worker_runtime(id, heartbeat_at, broker_connected)
+                VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET
+                heartbeat_at=excluded.heartbeat_at, broker_connected=excluded.broker_connected""",
+                (utc_iso(at), int(connected)))
+
+    def get_worker_runtime(self):
+        with self.connection() as db:
+            row = db.execute("SELECT heartbeat_at, broker_connected FROM worker_runtime WHERE id=1").fetchone()
+            return dict(row) if row else None
 
     def ensure_device(self, device_id):
         with self.connection() as db:

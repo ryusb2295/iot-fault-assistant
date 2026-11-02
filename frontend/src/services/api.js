@@ -6,6 +6,7 @@ import { device, events, manuals, cases, logs, recentActions, chartPoints } from
 const useApi = import.meta.env.VITE_DATA_SOURCE !== 'mock'
 const client = axios.create({ baseURL: import.meta.env.VITE_API_BASE_URL || '/api', timeout: 8000 })
 export const connectionState = ref(useApi ? 'checking' : 'mock')
+export const monitoringState = ref(null)
 client.interceptors.response.use(
   (response) => { connectionState.value = 'connected'; return response },
   (error) => { if (!error.config?.url?.includes('/ai-guidance')) connectionState.value = 'error'; return Promise.reject(error) },
@@ -14,6 +15,12 @@ const copy = (value) => structuredClone(value)
 const read = async (path, mockValue) => useApi ? (await client.get(path)).data : copy(mockValue)
 
 export const dataMode = useApi ? 'api' : 'mock'
+export const getHealth = async () => {
+  if (!useApi) return null
+  const result = (await client.get('/health')).data
+  monitoringState.value = result
+  return result
+}
 export const getDashboard = async () => useApi ? (await client.get('/dashboard')).data : {
   devices: 1,
   normalDevices: device.status === 'normal' ? 1 : 0,
