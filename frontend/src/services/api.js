@@ -27,6 +27,13 @@ export const getDashboard = async () => useApi ? (await client.get('/dashboard')
   faults: events.length,
   unrecoveredFaults: events.filter((event) => !event.recoveredAt).length,
   unresolvedFaults: events.filter((event) => event.status === 'open').length,
+  recoveredFaults: events.filter((event) => Boolean(event.recoveredAt)).length,
+  completedActions: events.filter((event) => event.status === 'resolved').length,
+  faultsByType: {
+    CONNECTION_TIMEOUT: events.filter((event) => event.type === 'message_timeout').length,
+    RESPONSE_DELAY: events.filter((event) => event.type === 'response_delay').length,
+    INVALID_MESSAGE: events.filter((event) => event.type === 'format_error').length,
+  },
 }
 export const getDevices = () => read('/devices', [device])
 export const getDevice = () => read('/devices/RPI-01', useApi ? device : {
@@ -42,7 +49,11 @@ export const getCases = async () => copy(cases)
 export const getAiGuidance = async (id) => useApi ? (await client.get(`/events/${encodeURIComponent(id)}/ai-guidance`, { timeout: 65000 })).data : null
 export const getEventLogs = (id) => read(`/events/${encodeURIComponent(id)}/logs`, id === 'EVT-20261027-006' ? logs : [])
 export const getRecentActions = () => read('/actions/recent', recentActions)
-export const getChartPoints = () => read('/metrics/events', chartPoints)
+// 최근 15분 분 단위 집계 (시연 중 끊긴 구간이 보이도록)
+export const getChartPoints = () => read('/metrics/recent', chartPoints)
+// 이 시스템에 실제로 저장된 조치 기록 (지식으로 재사용)
+export const getKnowledgeActions = async () => useApi ? (await client.get('/actions/recent', { params: { limit: 50 } })).data : []
+export const getPastActions = async (id) => useApi ? (await client.get(`/events/${encodeURIComponent(id)}/past-actions`)).data : []
 
 // Demo responses are saved in this browser only.
 export const getLocalResponse = (id) => {

@@ -9,6 +9,9 @@ __pycache__/
 .pytest_cache/
 *.py[cod]
 dist/
+.vite/
+presentation/qa-slide-*.png
+presentation/video/dashboard_frame.png
 build/
 *.db
 *.sqlite
@@ -31,3 +34,5 @@ confidential/
 *.p12
 *.pfx
 experiments/results*.csv
+
+.fuse_hidden*

@@ -86,7 +86,8 @@ def create_app(repo=None):
     repository = repo or Repository(DB_PATH)
     repository.ensure_device(DEVICE_ID)
     app = FastAPI(title="IoT Fault Monitoring API", version="0.2.0")
-    app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173",
+                                                    "http://localhost:5175", "http://127.0.0.1:5175"],
                        allow_credentials=False, allow_methods=["GET", "POST"], allow_headers=["*"])
 
     @app.get("/api/health")
@@ -163,10 +164,29 @@ def create_app(repo=None):
             raise HTTPException(404, "장애를 찾을 수 없습니다")
         return {"id": action_id, "eventId": event_id, "saved": True}
 
+    def knowledge_action_json(item):
+        return {"id": item["id"], "eventId": item["event_id"], "faultType": item["fault_type"],
+                "type": TYPE_TO_UI[item["fault_type"]], "summary": item["description"],
+                "action": item["action_text"], "resolved": bool(item["resolved"]),
+                "checklist": json.loads(item["checklist"]), "time": item["created_at"],
+                "occurredAt": item["started_at"], "recoveredAt": item["recovered_at"]}
+
     @app.get("/api/actions/recent")
-    def recent_actions():
-        return [{"eventId": item["event_id"], "action": item["action_text"], "time": item["created_at"]}
-                for item in repository.list_actions()]
+    def recent_actions(limit: int = 10):
+        return [{**knowledge_action_json(item)} for item in repository.list_actions_with_events(limit=min(limit, 200))]
+
+    @app.get("/api/events/{event_id}/past-actions")
+    def past_actions(event_id: int):
+        """같은 장애 유형에서 과거에 기록된 실제 조치 (현재 장애 제외)."""
+        row = repository.get_event(event_id)
+        if not row:
+            raise HTTPException(404, "장애를 찾을 수 없습니다")
+        return [knowledge_action_json(item) for item in repository.list_actions_with_events(
+            limit=5, fault_type=row["fault_type"], exclude_event_id=event_id)]
+
+    @app.get("/api/metrics/recent")
+    def recent_metrics(minutes: int = 15):
+        return repository.minute_metrics(max(5, min(minutes, 60)))
 
     @app.get("/api/metrics/events")
     def event_metrics():

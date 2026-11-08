@@ -19,7 +19,7 @@ const activeMenu = computed(() => route.name === 'event-detail' ? '/response' : 
     <RouterLink class="brand" to="/dashboard"><span class="brand-mark">FM</span><span>IoT Fault<br /><strong>Monitoring</strong></span></RouterLink>
     <div class="sidebar-caption">WORKSPACE</div>
     <nav class="sidebar-nav" aria-label="주 메뉴">
-      <RouterLink v-for="item in items" :key="item.label" :to="item.to" :class="['nav-item', { active: activeMenu === item.to }]">
+      <RouterLink v-for="item in items" :key="item.label" :to="item.to" :aria-current="activeMenu === item.to ? 'page' : undefined" :class="['nav-item', { active: activeMenu === item.to }]">
         <el-icon :size="16"><component :is="item.icon" /></el-icon><span>{{ item.label }}</span>
       </RouterLink>
     </nav>

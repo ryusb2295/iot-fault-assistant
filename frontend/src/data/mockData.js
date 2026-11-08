@@ -17,7 +17,7 @@ export const events = [
 ]
 
 export const eventTypes = {
-  message_timeout: '메시지 수신 중단', response_delay: '응답 지연', format_error: '메시지 형식 오류',
+  message_timeout: '메시지 수신 중단', response_delay: '응답 지연', format_error: '메시지 형식 오류', system: '감시 시스템',
 }
 
 export const manuals = [
@@ -27,6 +27,12 @@ export const manuals = [
 ]
 
 export const cases = [
+  { id: 'CASE-09', type: 'format_error', title: 'timestamp 시간대 정보 누락', date: '2026-10-26', action: '발행 코드의 timestamp를 시간대가 포함된 ISO 8601 형식으로 바꾸고 정상 수신을 확인함' },
+  { id: 'CASE-08', type: 'response_delay', title: '응답 topic 오타로 인한 응답 미수신', date: '2026-10-25', action: '장치가 factory/RPI-01/respone로 발행하던 topic을 수정하고 request_id 매칭을 재확인함' },
+  { id: 'CASE-07', type: 'message_timeout', title: '장치 IP 변경 후 브로커 주소 불일치', date: '2026-10-25', action: 'DHCP로 바뀐 브로커 주소를 MQTT_HOST에 반영하고 상태 메시지 재수신을 확인함' },
+  { id: 'CASE-06', type: 'format_error', title: 'status 값에 허용되지 않는 문자열 사용', date: '2026-10-24', action: '발행 코드의 status 값을 RUNNING, IDLE, STOPPED, ERROR 중 하나로 고정함' },
+  { id: 'CASE-05', type: 'response_delay', title: '로그 파일 과다 기록으로 인한 처리 지연', date: '2026-10-23', action: '장치의 디버그 로그 레벨을 낮추고 응답 시간이 3초 이내로 돌아온 것을 재측정함' },
+  { id: 'CASE-04', type: 'message_timeout', title: '장치 발행 프로세스 비정상 종료', date: '2026-10-23', action: '발행 프로세스를 재시작하고 자동 재시작 설정을 추가한 뒤 10분간 수신을 관찰함' },
   { id: 'CASE-03', type: 'message_timeout', title: '브로커 재시작 이후 구독 복구', date: '2026-10-24', action: '브로커 서비스 상태 확인 후 구독 연결을 복구하고 5분간 수신을 관찰함' },
   { id: 'CASE-02', type: 'response_delay', title: '장치 부하로 인한 응답 지연', date: '2026-10-22', action: '장치의 중복 처리 작업을 종료하고 응답 시간을 재측정함' },
   { id: 'CASE-01', type: 'format_error', title: '발행 메시지의 필수 필드 누락', date: '2026-10-21', action: '발행 코드에서 device_id 필드를 추가하고 JSON 스키마를 재확인함' },

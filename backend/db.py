@@ -131,6 +131,13 @@ class Repository:
     def create_fault(self, device_id, fault_type, started_at, detected_at, description, dedupe_key=""):
         self.ensure_device(device_id)
         with self.connection() as db:
+            # 이미 진행 중인 같은 장애가 있으면 INSERT를 시도하지 않는다.
+            # (무시된 INSERT도 AUTOINCREMENT 번호를 소모해 장애 ID가 건너뛰는 문제 방지)
+            active = db.execute("""SELECT id FROM fault_events WHERE device_id=? AND fault_type=?
+                AND dedupe_key=? AND recovered_at IS NULL ORDER BY id DESC LIMIT 1""",
+                (device_id, fault_type, dedupe_key)).fetchone()
+            if active:
+                return active["id"]
             db.execute("""INSERT OR IGNORE INTO fault_events
                 (device_id, fault_type, started_at, detected_at, description, dedupe_key)
                 VALUES (?, ?, ?, ?, ?, ?)""",
@@ -190,18 +197,66 @@ class Repository:
         with self.connection() as db:
             return [dict(row) for row in db.execute("SELECT * FROM action_records ORDER BY created_at DESC, id DESC LIMIT ?", (limit,))]
 
+    def list_actions_with_events(self, limit=50, fault_type=None, exclude_event_id=None):
+        """실제 조치 기록을 장애 정보와 함께 반환한다 (지식으로 재사용)."""
+        sql = """SELECT a.*, f.fault_type, f.description, f.started_at, f.recovered_at
+                 FROM action_records a JOIN fault_events f ON f.id=a.event_id WHERE 1=1"""
+        args = []
+        if fault_type:
+            sql += " AND f.fault_type=?"
+            args.append(fault_type)
+        if exclude_event_id is not None:
+            sql += " AND a.event_id!=?"
+            args.append(exclude_event_id)
+        sql += " ORDER BY a.created_at DESC, a.id DESC LIMIT ?"
+        args.append(limit)
+        with self.connection() as db:
+            return [dict(row) for row in db.execute(sql, args)]
+
+    def minute_metrics(self, minutes=15):
+        """최근 N분을 1분 단위로 집계한다 (시연 중 변화가 보이도록)."""
+        end = utc_now().replace(second=0, microsecond=0) + timedelta(minutes=1)
+        start = end - timedelta(minutes=minutes)
+        with self.connection() as db:
+            logs = [dict(row) for row in db.execute("""SELECT received_at, topic, validation_result
+                FROM communication_logs WHERE received_at>=?
+                AND ((topic=? AND validation_result='VALID') OR validation_result LIKE 'INVALID:%')""",
+                (utc_iso(start), STATUS_TOPIC))]
+            faults = [dict(row) for row in db.execute("SELECT detected_at FROM fault_events WHERE detected_at>=?", (utc_iso(start),))]
+        buckets = [{"normal": 0, "warning": 0, "error": 0} for _ in range(minutes)]
+        def index(value):
+            i = int((datetime.fromisoformat(value) - start).total_seconds() // 60)
+            return i if 0 <= i < minutes else None
+        for row in logs:
+            i = index(row["received_at"])
+            if i is not None:
+                buckets[i]["warning" if row["validation_result"].startswith("INVALID:") else "normal"] += 1
+        for row in faults:
+            i = index(row["detected_at"])
+            if i is not None:
+                buckets[i]["error"] += 1
+        kst = timezone(timedelta(hours=9))
+        return [{"label": (start + timedelta(minutes=i)).astimezone(kst).strftime("%H:%M"), **b}
+                for i, b in enumerate(buckets)]
+
     def list_actions_for_event(self, event_id):
         with self.connection() as db:
             return [dict(row) for row in db.execute("SELECT * FROM action_records WHERE event_id=? ORDER BY created_at DESC, id DESC", (event_id,))]
 
     def dashboard_counts(self):
         with self.connection() as db:
+            by_type = {row["fault_type"]: row["count"] for row in db.execute(
+                "SELECT fault_type, COUNT(*) AS count FROM fault_events GROUP BY fault_type")}
             return {
                 "devices": db.execute("SELECT COUNT(*) FROM devices").fetchone()[0],
                 "normalDevices": db.execute("SELECT COUNT(*) FROM devices WHERE status='NORMAL'").fetchone()[0],
                 "faults": db.execute("SELECT COUNT(*) FROM fault_events").fetchone()[0],
                 "unrecoveredFaults": db.execute("SELECT COUNT(*) FROM fault_events WHERE recovered_at IS NULL").fetchone()[0],
                 "unresolvedFaults": db.execute("SELECT COUNT(*) FROM fault_events WHERE status!='RESOLVED'").fetchone()[0],
+                "recoveredFaults": db.execute("SELECT COUNT(*) FROM fault_events WHERE recovered_at IS NOT NULL").fetchone()[0],
+                "completedActions": db.execute("SELECT COUNT(*) FROM fault_events WHERE status='RESOLVED'").fetchone()[0],
+                "faultsByType": {key: by_type.get(key, 0) for key in (
+                    "CONNECTION_TIMEOUT", "RESPONSE_DELAY", "INVALID_MESSAGE")},
             }
 
     def hourly_metrics(self, hours=7):

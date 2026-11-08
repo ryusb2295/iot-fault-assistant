@@ -1,0 +1,118 @@
+<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>IoT 통신 장애 감지와 대응 보조 시스템</title>
+<link rel="stylesheet" href="deck.css"><main><section class="slide slide-1" aria-label="1번 슬라이드"><header><span>IoT FAULT MONITORING</span><span>01 / 12</span></header><h1>IoT 통신 장애 감지와 대응 보조 시스템</h1><div class="content"><div class="hero">MQTT 수신부터 규칙 판정,<br>근거 기반 점검 안내까지</div><p class="subtle">PC 시뮬레이터 · FastAPI · SQLite · Vue · Ollama</p></div><aside class="notes"><ul>
+<li>장치 메시지가 멈추거나 늦거나 형식이 잘못되면 운영자가 원인 후보와 확인 순서를 빠르게 파악해야 한다.</li>
+<li>목표: MQTT 수신 → 규칙 판정 → 장애 기록 → 근거 문서 기반 점검 안내 → 사용자 조치 기록.</li>
+</ul>
+<p>발표: AI는 장애를 판정하지 않는다. 장애 유형과 복구 여부는 규칙 엔진과 수신 로그가 결정한다.</p>
+</aside></section><section class="slide slide-2" aria-label="2번 슬라이드"><header><span>IoT FAULT MONITORING</span><span>02 / 12</span></header><h1>운영자가 확인해야 할 세 가지</h1><div class="content"><div class="hero">알림 한 건에 필요한 맥락</div><div class="trio"><span>언제 메시지가 멈췄나</span><span>어떤 규칙이 장애를 판정했나</span><span>무엇을 확인해야 하나</span></div></div><aside class="notes"><ul>
+<li>감시 대상: RPI-01 한 대. PC MQTT 시뮬레이터로 재현한다.</li>
+<li>발표용 SQLite는 개발 DB와 별도로 시작한다.</li>
+<li>Raspberry Pi 코드와 설정은 준비됐지만 실제 Pi Ethernet 단절 실험은 이번 측정에 포함되지 않았다.</li>
+</ul>
+</aside></section><section class="slide slide-3" aria-label="3번 슬라이드"><header><span>IoT FAULT MONITORING</span><span>03 / 12</span></header><h1>수신부터 대응 화면까지</h1><div class="content"><div class="flow"><span>PC 시뮬레이터</span><span>MQTT Broker</span><span>Python Worker</span><span>SQLite</span><span>FastAPI · Vue</span></div><p class="accent-line">AI 점검 안내는 장애 상세에서만 생성한다.</p></div><aside class="notes"><p><code>PC 시뮬레이터 → MQTT Broker → Python Worker → 규칙 엔진 → SQLite → FastAPI → Vue</code></p>
+<p>AI 경로: <code>장애 상세 → 유형별 매뉴얼 절 검색 + 연결 로그 → Ollama → 점검 안내 + 출처</code></p>
+<p>발표: Worker가 수신과 판정을 맡고 API는 저장된 상태를 조회한다. AI 호출은 장애 상세에서만 수행한다.</p>
+</aside></section><section class="slide slide-4" aria-label="4번 슬라이드"><header><span>IoT FAULT MONITORING</span><span>04 / 12</span></header><h1>세 가지 장애 판정 규칙</h1><div class="content"><div class="rules"><div><b>01</b><h3>통신 중단</h3><p>마지막 유효 상태 메시지 후<br>10초 이상 미수신</p></div><div><b>02</b><h3>응답 지연</h3><p>요청 후 약 3초 내<br>일치하는 응답 없음</p></div><div><b>03</b><h3>형식 오류</h3><p>메시지 필수 값과<br>형식 검증 실패</p></div></div><p class="accent-line">통신 복구와 사용자 조치 완료는 별도로 기록한다.</p></div><aside class="notes"><table>
+<thead>
+<tr>
+<th>유형</th>
+<th>판정 기준</th>
+<th>관찰할 화면</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>통신 중단</td>
+<td>마지막 유효 상태 수신 후 10초 이상 미수신</td>
+<td>통신 상태와 새 장애</td>
+</tr>
+<tr>
+<td>응답 지연</td>
+<td>요청 후 약 3초가 지나도 응답 없음</td>
+<td>요청·응답 로그와 지연 이벤트</td>
+</tr>
+<tr>
+<td>형식 오류</td>
+<td>유효하지 않은 MQTT 메시지</td>
+<td>검증 오류 로그와 장애 유형</td>
+</tr>
+</tbody>
+</table>
+<p>발표: 복구 여부와 사용자 조치 완료 여부는 독립적으로 관리한다.</p>
+</aside></section><section class="slide slide-5" aria-label="5번 슬라이드"><header><span>IoT FAULT MONITORING</span><span>05 / 12</span></header><h1>장애 상태를 한 화면에서</h1><div class="content"><div class="shot-layout"><img src="video/events_frame.png" alt="실제 대시보드 화면"><div><h3>운영 화면</h3><p>장애 유형별 건수</p><p>복구·미복구 상태</p><p>사용자 조치 현황</p><small>실제 MQTT 시연 녹화 화면</small></div></div></div><aside class="notes"><ul>
+<li><code>devices</code>: 현재 상태와 마지막 수신.</li>
+<li><code>communication_logs</code>: 수신 메시지와 검증 결과.</li>
+<li><code>fault_events</code>: 장애 유형, 탐지·복구 시각.</li>
+<li><code>action_records</code>: 체크리스트와 사용자 조치.</li>
+</ul>
+<p>화면 시연: 대시보드의 장애 유형별 건수, 복구/미복구, 조치 완료/미완료를 확인한다.</p>
+</aside></section><section class="slide slide-6" aria-label="6번 슬라이드"><header><span>IoT FAULT MONITORING</span><span>06 / 12</span></header><h1>실시간 시연</h1><div class="content"><div class="demo-layout"><video controls preload="metadata" poster="video/events_frame.png" src="video/mqtt_fault_demo_2026-11-06T13-53-32-334Z.webm"></video><ol><li>정상 메시지 수신</li><li>지연 모드 전환</li><li>장애 이력·로그 확인</li><li>정상 복귀</li></ol></div></div><aside class="notes"><ol>
+<li>발표용 빈 DB와 시스템을 시작한다.</li>
+<li>정상 메시지 수신을 확인한다.</li>
+<li>시뮬레이터를 장애 모드로 전환해 새 이벤트를 확인한다.</li>
+<li>장애 상세에서 로그와 매뉴얼을 확인한다.</li>
+<li>정상 모드로 복귀해 복구 시각을 확인한다.</li>
+</ol>
+<p>대체: 실시간 연결에 실패하면 <code>presentation/video/</code>의 실제 MQTT 시연 영상을 재생한다.</p>
+</aside></section><section class="slide slide-7" aria-label="7번 슬라이드"><header><span>IoT FAULT MONITORING</span><span>07 / 12</span></header><h1>규칙 기반 탐지 실험 15회</h1><div class="content"><div class="results"><div><strong>10.106초</strong><span>통신 중단 · 5회 평균</span><i style="width:84%"></i></div><div><strong>3.190초</strong><span>응답 지연 · 5회 평균</span><i style="width:27%"></i></div><div><strong>측정 불가</strong><span>형식 오류 · 5회</span><p>수신·판정 기록의 시각 해상도 동일</p></div></div><p class="fine">두 시간 측정은 시작점이 달라 직접 비교하지 않는다.</p></div><aside class="notes"><table>
+<thead>
+<tr>
+<th>유형</th>
+<th style="text-align:right">시행</th>
+<th style="text-align:right">탐지 시간 평균</th>
+<th style="text-align:right">범위</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>통신 중단</td>
+<td style="text-align:right">5회</td>
+<td style="text-align:right">10.106초</td>
+<td style="text-align:right">10.003~10.207초</td>
+</tr>
+<tr>
+<td>응답 지연</td>
+<td style="text-align:right">5회</td>
+<td style="text-align:right">3.190초</td>
+<td style="text-align:right">3.010~3.269초</td>
+</tr>
+<tr>
+<td>형식 오류</td>
+<td style="text-align:right">5회</td>
+<td style="text-align:right">측정 불가</td>
+<td style="text-align:right">수신·판정 시각 해상도 동일</td>
+</tr>
+</tbody>
+</table>
+<p>발표: 통신 중단은 마지막 유효 상태 수신, 응답 지연은 요청 등록을 시작점으로 측정했다. 기준이 달라 평균을 직접 비교하지 않는다. 형식 오류 시간을 0초로 주장하지 않는다.</p>
+<p><a href="experiment_charts.html">측정 그래프 보기</a></p>
+</aside></section><section class="slide slide-8" aria-label="8번 슬라이드"><header><span>IoT FAULT MONITORING</span><span>08 / 12</span></header><h1>측정 범위와 해석</h1><div class="content"><div class="range"><div><span>통신 중단</span><i><b style="left:83.4%;width:1.7%"></b></i><strong>10.003–10.207초</strong></div><div><span>응답 지연</span><i><b style="left:25.1%;width:2.2%"></b></i><strong>3.010–3.269초</strong></div></div><p class="fine">각 막대는 0~12초 축에 표시한 5회 측정 범위. PC 환경 결과다.</p></div><aside class="notes"><ul>
+<li>두 시간 측정치는 설정한 판정 기준 근처에서 나타났다.</li>
+<li>15회는 PC 격리 실험이며 물리 네트워크 장애의 지연 분포를 대표하지 않는다.</li>
+<li>형식 오류는 기록 시각의 해상도 때문에 탐지 소요 시간을 수치화하지 않았다.</li>
+</ul>
+</aside></section><section class="slide slide-9" aria-label="9번 슬라이드"><header><span>IoT FAULT MONITORING</span><span>09 / 12</span></header><h1>근거 문서 기반 점검 안내</h1><div class="content"><div class="rag"><div class="rag-steps"><span>장애 유형</span><span>해당 매뉴얼 절 + 연결 로그</span><span>로컬 Ollama</span><span>점검 안내 + 출처</span></div><img src="video/detail_frame.png" alt="장애 상세 화면"></div><p class="accent-line">검색 근거가 없으면 모델을 호출하지 않는다.</p></div><aside class="notes"><ol>
+<li>규칙 엔진이 정한 장애 유형으로 해당 매뉴얼을 선택한다.</li>
+<li>매뉴얼의 절과 연결 로그를 Ollama에 전달한다.</li>
+<li>답변과 문서 제목·절·줄 위치를 함께 보여준다.</li>
+<li>근거 문서가 없으면 모델을 호출하지 않는다.</li>
+</ol>
+<p>발표: 점검 안내는 가능한 원인과 확인 순서이며 실제 원인 확정이나 장치 제어가 아니다.</p>
+</aside></section><section class="slide slide-10" aria-label="10번 슬라이드"><header><span>IoT FAULT MONITORING</span><span>10 / 12</span></header><h1>AI 응답 시간과 근거 검토</h1><div class="content"><div class="ai"><div class="big">5<small>/5</small><p>동일 이벤트의 응답 생성 성공</p></div><div class="bars"><div><span>1회</span><i style="width:89%"></i><b>8.908s</b></div><div><span>2회</span><i style="width:36%"></i><b>3.556s</b></div><div><span>3회</span><i style="width:36%"></i><b>3.641s</b></div><div><span>4회</span><i style="width:36%"></i><b>3.576s</b></div><div><span>5회</span><i style="width:36%"></i><b>3.638s</b></div></div></div><p class="fine">별도 답변 1건의 근거 검토는 부분 적합. 출처 밖 권고가 남았다.</p></div><aside class="notes"><ul>
+<li>동일한 형식 오류 이벤트 ID 77을 5번 호출했고 5번 모두 응답 생성에 성공했다.</li>
+<li>응답 시간 평균 4.664초, 중앙값 3.638초, 범위 3.556~8.908초.</li>
+<li>통합 테스트에서 한 답변의 매뉴얼·로그 일치를 검토했고, 초기의 근거 없는 시각 단정을 프롬프트 수정 후 재검증했다.</li>
+<li>5개 응답 본문은 CSV에 없어 5건 전체의 근거 적합성은 아직 평가되지 않았다.</li>
+<li>별도 재검증 한 건에서는 매뉴얼 밖의 권고가 남아 부분 적합으로 판정했다. 출처 표시는 문장별 정확성을 보증하지 않는다.</li>
+</ul>
+</aside></section><section class="slide slide-11" aria-label="11번 슬라이드"><header><span>IoT FAULT MONITORING</span><span>11 / 12</span></header><h1>검증 범위와 남은 과제</h1><div class="content"><div class="limits"><div><h3>이번에 확인</h3><p>PC 시뮬레이터의 세 장애 유형</p><p>분리된 SQLite와 실제 MQTT 시연</p><p>Ollama 실패 시 모니터링 유지</p></div><div><h3>다음에 검증</h3><p>실제 Raspberry Pi 네트워크 단절</p><p>AI 답변 5건의 문장별 근거 대조</p><p>장기 운영 시 오탐과 누락</p></div></div></div><aside class="notes"><ul>
+<li>Ollama를 사용할 수 없어도 장애 판정과 조회는 계속 작동한다.</li>
+<li>근거 문서가 없으면 AI 점검 안내를 생성하지 않는다.</li>
+<li>현재는 장치 한 대, PC 시뮬레이터, 제한된 실험 횟수로 검증했다.</li>
+</ul>
+</aside></section><section class="slide slide-12" aria-label="12번 슬라이드"><header><span>IoT FAULT MONITORING</span><span>12 / 12</span></header><h1>결론</h1><div class="content"><div class="hero">장애 판정은 규칙으로,<br>점검은 근거와 함께</div><p class="subtle">질문 감사합니다.</p></div><aside class="notes"><ul>
+<li>규칙 기반 감지, 이력 조회, 복구와 사용자 조치의 분리, 근거 문서 기반 점검 안내까지 연결했다.</li>
+<li>다음 검증: 실제 Raspberry Pi 네트워크 단절 실험, AI 답변 5건의 문장별 근거 대조, 더 긴 운영 기간의 지표.</li>
+</ul>
+</aside></section></main><div class="controls"><button type="button" id="prev" aria-label="이전 슬라이드">이전</button><span id="count"></span><button type="button" id="next" aria-label="다음 슬라이드">다음</button><button type="button" id="notes">발표자 노트</button><button type="button" id="full">전체 화면</button></div>
+<script>const slides=[...document.querySelectorAll('.slide')];let current=0;function show(n){current=Math.max(0,Math.min(slides.length-1,n));slides.forEach((s,i)=>s.classList.toggle('active',i===current));document.getElementById('count').textContent=(current+1)+' / '+slides.length;location.hash='slide-'+(current+1)}document.getElementById('prev').onclick=()=>show(current-1);document.getElementById('next').onclick=()=>show(current+1);document.getElementById('notes').onclick=()=>document.body.classList.toggle('show-notes');document.getElementById('full').onclick=()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='PageDown')show(current+1);if(e.key==='ArrowLeft'||e.key==='PageUp')show(current-1);if(e.key.toLowerCase()==='n')document.body.classList.toggle('show-notes');if(e.key.toLowerCase()==='f')document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen()});show(Math.max(0,Number(location.hash.replace('#slide-',''))-1||0))</script></html>

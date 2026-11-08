@@ -1,102 +1,200 @@
-﻿# IoT 설비 통신 장애 대응 지원 시스템
+# 설비 통신 장애 대응 지원 웹
 
-MQTT 설비 메시지를 수집하고 통신 이상을 감지해, 운영자가 Vue 대시보드에서 장애 이력과 조치 내역을 확인하는 로컬 개발 프로젝트입니다. PC의 `RPI-01` 시뮬레이터로 통신 장애 시나리오를 검증했으며, Raspberry Pi 5 실기기 실행 절차는 [연동 가이드](RASPBERRY_PI_SETUP.md)에 정리했습니다.
+MQTT로 들어오는 설비 메시지를 규칙으로 감시해 통신 장애를 판정하고, 장애가 나면 **통신 로그, 점검 매뉴얼, 이전 조치 기록, 로컬 AI 점검 안내**를 한 화면에 모아 보여주는 웹입니다. 점검 후 남긴 조치는 같은 유형의 다음 장애에서 다시 보입니다.
 
-## 시스템 아키텍처
+![장애 발생부터 복구까지](docs/images/demo.gif)
 
-```text
-PC 장치 시뮬레이터 또는 Raspberry Pi 5 에이전트 (STM32는 향후 연동)
-    ↕ MQTT: factory/RPI-01/{status,request,response}
-Mosquitto broker
-    ↕
-backend.mqtt_worker → 규칙 기반 감지 → SQLite
-                                       ↕
-                              FastAPI (/api)
-                                       ↕
-                              Vue 3 + Vite 대시보드
+> 장치를 끄면 10초 뒤 자동으로 장애가 판정되고, 장치를 다시 켜면 복구 시각이 자동으로 기록됩니다.
+
+| 항목 | 내용 |
+| --- | --- |
+| 판정하는 장애 | 메시지 수신 중단 (10초), 응답 지연 (3초), 메시지 형식 오류 |
+| 판정 정확도 | 기준 시간보다 최대 0.27초 안에 판정 (유형별 5회, 총 15회) |
+| AI 안내 | 로컬 Ollama `exaone3.5:2.4b`, 매뉴얼 파일과 줄 번호를 출처로 표시 |
+| 테스트 | 백엔드 자동 테스트 43개 통과 |
+| 스택 | Python, paho-mqtt, FastAPI, SQLite, Mosquitto, Vue 3, Element Plus, ECharts, Ollama |
+
+## 왜 만들었나
+
+장애가 나면 담당자는 통신 로그, 점검 매뉴얼, 과거 조치 기록을 따로따로 찾아야 합니다. 점검하면서 무엇을 확인했는지도 남지 않아서 다음 대응에 쓰이지 않습니다. 이 프로젝트는 두 문제를 하나의 흐름으로 묶습니다.
+
+```
+메시지 수신 → 규칙 판정 → 장애와 로그 기록 → 근거 문서 기반 점검 안내 → 조치 기록 → 다음 장애에서 재사용
 ```
 
-MQTT 수신 프로세스와 FastAPI 서버는 별도로 실행하며 같은 SQLite 파일을 사용합니다.
+설계 원칙은 하나입니다. **판정은 규칙이 하고, AI는 설명만 돕습니다.** 장애 유형, 발생 시각, 복구 여부는 Python 규칙 엔진이 정합니다. AI는 이미 판정된 장애에 대해 매뉴얼과 로그를 근거로 점검 순서를 안내할 뿐, 원인을 확정하거나 장치를 제어하지 않습니다. 관련 매뉴얼이 없으면 모델을 호출하지 않고 근거 부족으로 표시합니다.
 
-## 기술 스택
+## 구조
 
-Vue 3, Vite, Element Plus, ECharts, Axios / Python FastAPI, Uvicorn, paho-mqtt, httpx / Mosquitto / SQLite / Ollama 로컬 LLM. Raspberry Pi 5 및 STM32 실기기 연동은 개발 예정입니다.
-
-## 폴더 구조
-
-```text
-backend/         API(main.py), MQTT 수신(mqtt_worker.py), 감지(engine.py), DB(db.py), 설정(config.py)
-frontend/        Vue 앱(src/), Vite 설정, npm 의존성
-raspberry_pi/    PC/Raspberry Pi OS 공용 MQTT 장치 에이전트
-scripts/         실험 시각·AI 응답 시간 CSV 기록
-experiments/     실험 결과 기록 양식 (실제 결과는 Git 제외)
-tests/           백엔드 테스트
-requirements.txt
-.env.example     환경변수 예시 (자동 로드되지 않음)
+```mermaid
+flowchart LR
+    DEV["가상 장치 RPI-01<br/>2초마다 상태 발행"] -- "factory/RPI-01/status<br/>request / response" --> BR["Mosquitto<br/>MQTT 브로커"]
+    BR --> WK["MQTT Worker<br/>규칙 엔진, 0.25초마다 판정"]
+    WK --> DB[("SQLite<br/>로그, 장애, 조치")]
+    DB --> API["FastAPI"]
+    API --> WEB["Vue 3 웹<br/>대시보드, 장애 상세"]
+    API -. "장애 상세를 열 때만" .-> RAG["매뉴얼 검색<br/>manuals/*.md"]
+    RAG --> LLM["Ollama<br/>EXAONE 3.5 2.4B"]
+    LLM -. "안내 + 출처" .-> API
 ```
 
-## 개발 환경 설정
+- MQTT Worker와 FastAPI는 **별도 프로세스**입니다. 같은 SQLite 파일을 쓰지만, 수신과 판정은 API 서버가 멈춰도 계속됩니다.
+- 모든 처리가 PC 안에서 이뤄집니다. AI도 로컬 모델이라 설비 로그가 외부로 나가지 않습니다.
 
-Python 3.12, Node.js 22.18 이상 또는 24.12 이상, npm, Mosquitto가 필요합니다. Windows PowerShell에서 프로젝트 루트를 기준으로 실행합니다.
+### 판정 규칙
+
+| 장애 | 코드 | 판정 기준 | 복구 판정 |
+| --- | --- | --- | --- |
+| 메시지 수신 중단 | `CONNECTION_TIMEOUT` | 마지막 유효 상태 메시지 후 10초 동안 다음 메시지 없음 | 정상 상태 메시지 재수신 |
+| 응답 지연 | `RESPONSE_DELAY` | 요청 후 3초 안에 응답 없음 | 늦게라도 응답 도착 |
+| 메시지 형식 오류 | `INVALID_MESSAGE` | 필수 필드 누락, 자료형 오류, JSON 파싱 실패 | 다음 정상 메시지 수신 |
+
+## 화면
+
+| 대시보드 | 장애 상세 및 대응 |
+| --- | --- |
+| ![대시보드](docs/images/dashboard.png) | ![장애 상세](docs/images/detail.png) |
+| 장치가 지금 살아 있는지 경과 시간과 10초 게이지로 표시합니다. 진행 중 장애, 점검 기록이 필요한 장애, 최근 15분 통신 추이를 함께 봅니다. | 판정 근거가 된 MQTT 로그, 같은 유형의 이전 조치, 관련 매뉴얼, AI 점검 안내, 체크리스트를 한 화면에서 봅니다. |
+
+| 장애 이력 | 매뉴얼 및 조치 사례 |
+| --- | --- |
+| ![장애 이력](docs/images/events.png) | ![매뉴얼](docs/images/knowledge.png) |
+| **통신 상태**(시스템이 자동 판단)와 **점검 기록**(사람이 남김)을 따로 표시합니다. 통신이 돌아와도 기록이 없으면 '점검 기록 필요'로 남습니다. | 점검 매뉴얼 4종, 실제로 저장된 조치 기록, 실습용 예시 사례를 검색합니다. |
+
+## 해결한 문제
+
+### 1. 장치가 돌아오면 가짜 응답 지연이 한꺼번에 기록됐다
+
+**증상.** 장치를 끄고 10초 넘게 기다린 뒤 다시 켜면 메시지 수신 중단 1건과 함께 28초짜리 응답 지연이 여러 건 생겼습니다.
+
+**원인.** 장치가 꺼져 있는 동안에도 Worker는 6초마다 요청을 발행했고, 이 요청이 브로커에 쌓였습니다. 장치가 다시 연결되자 쌓인 요청에 한꺼번에 응답했고, 엔진은 이를 "요청 후 28초 만에 온 응답"으로 판단했습니다. 장치가 죽은 것이 원인인데 장치가 느리다고 기록한 셈입니다.
+
+**해결.**
+- 최근 4초 안에 상태 메시지가 온 경우에만 요청을 발행합니다 (`device_alive`).
+- 요청 후 3초가 지나도 응답이 없을 때, 그 사이 상태 메시지도 오지 않았다면 응답 지연이 아니라 장치 무응답(`NO_RESPONSE`)으로 로그만 남깁니다.
+- 통신 중단 중에 보낸 요청은 표시해 두고, 재연결 후 늦게 온 응답은 `STALE` 로그로만 남깁니다.
+
+**결과.** 장치를 끄고 켜는 시나리오에서 메시지 수신 중단 1건만 기록되고 복구까지 정상 처리됩니다.
+
+### 2. 장치를 재시작하면 직전 요청이 응답 지연으로 남았다
+
+**증상.** 요청을 보낸 직후 장치가 재시작되면, 그 요청에 대한 응답 지연 장애가 복구되지 않은 채 남았습니다.
+
+**원인.** 재시작한 장치는 재시작 전에 받은 요청을 기억하지 못합니다. 그런데 엔진은 그 요청의 응답을 계속 기다렸습니다.
+
+**해결.** 상태 메시지의 `sequence`가 이전 값보다 작거나 같아지면 장치가 재시작된 것으로 봅니다. 이때 재시작 전에 등록된 요청은 '재시작으로 유실'로 처리하고 대기 목록에서 지웁니다.
+
+**결과.** 재시작이 응답 지연으로 잘못 기록되지 않습니다.
+
+### 3. 감시 시스템이 멈춘 것을 장치 고장으로 기록할 뻔했다
+
+**문제.** "10초 동안 메시지가 없으면 장애"라는 규칙만 있으면, Worker가 죽거나 브로커 연결이 끊겨도 장치 고장으로 기록됩니다. 장치는 멀쩡히 메시지를 보내고 있을 수도 있습니다.
+
+**해결.** `/api/health`가 API, Worker, Broker, 장치 상태를 따로 보고하게 했습니다.
+
+| 상황 | Worker | Broker | 웹의 장치 판단 | 장애로 남기나 |
+| --- | --- | --- | --- | --- |
+| Worker heartbeat가 3초 넘게 갱신 안 됨 | stopped | unknown | 확인 불가 | 남기지 않음 |
+| Worker 정상, 브로커 연결 끊김 | running | disconnected | 확인 불가 | 남기지 않음 |
+| 브로커 정상, 장치 메시지만 10초 이상 없음 | running | connected | 통신 끊김 | 메시지 수신 중단 |
+
+**결과.** 감시 쪽이 멈추면 대시보드에 '상태 확인 불가'로만 표시하고 장애를 만들지 않습니다. 세 상황 모두 자동 테스트로 검증합니다.
+
+그 밖에, 판정 직후 장애가 중복 생성되며 장애 ID가 건너뛰던 문제를 장애를 만들기 전에 진행 중 장애가 있는지 먼저 확인하도록 고쳤습니다.
+
+## 실험 결과
+
+PC 격리 환경에서 시뮬레이터 모드를 바꿔 장애를 실제로 발생시키고 측정했습니다. 원자료는 `experiments/`, 요약은 `presentation/experiment_summary.md`에 있습니다.
+
+### 규칙 기반 판정 시간
+
+| 유형 | 횟수 | 평균 | 범위 | 기준을 넘긴 시간 |
+| --- | ---: | ---: | ---: | ---: |
+| 메시지 수신 중단 | 5 | 10.106초 | 10.003~10.207초 | 최대 0.207초 |
+| 응답 지연 | 5 | 3.190초 | 3.010~3.269초 | 최대 0.269초 |
+| 메시지 형식 오류 | 5 | 5/5 판정 | 측정 불가 | 수신과 판정 시각의 해상도가 같음 |
+
+- 기준을 넘긴 시간은 Worker가 0.25초마다 판정하기 때문에 생기는 차이로 볼 수 있습니다.
+- 메시지 수신 중단은 마지막 유효 상태 수신부터, 응답 지연은 요청 등록부터 잽니다. 시작점이 달라 두 유형을 직접 비교하지 않습니다.
+
+### 로컬 AI 응답 시간
+
+| 호출 | 1 | 2 | 3 | 4 | 5 | 평균 | 중앙값 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 응답 시간 | 8.908초 | 3.556초 | 3.641초 | 3.576초 | 3.638초 | 4.664초 | 3.638초 |
+
+첫 호출은 모델 적재 시간이 포함된 것으로 보입니다. 5회 모두 같은 형식 오류 장애에 대한 호출이며, 성공은 답이 나왔다는 뜻이지 내용이 정확하다는 뜻이 아닙니다.
+
+### AI 안내 근거 검토 (실제 응답 1건)
+
+응답 지연 장애에 대한 AI 답변을 매뉴얼과 한 줄씩 대조했습니다. 결과는 **부분 적합**입니다. 장애 유형에 맞는 문서가 검색됐고 원인 후보도 가능성으로 표현했지만, '소프트웨어 업데이트 확인'처럼 매뉴얼에 없는 권고가 남았습니다. 그래서 AI 안내는 참고용으로만 쓰고, 이후 매뉴얼에 관련 로그 예시와 다른 장애와의 구분 기준을 보강했습니다. 상세 내용은 `presentation/ai_review.md`에 있습니다.
+
+## 실행
+
+Windows, Python 3.12, Node.js 22.18 이상 또는 24.12 이상, Mosquitto가 필요합니다. AI 안내를 쓰려면 Ollama와 `exaone3.5:2.4b` 모델이 필요합니다.
 
 ```powershell
 py -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-cd frontend
-npm ci
-cd ..
-```
-
-기본 MQTT 주소는 `localhost:1883`, DB는 `backend/iot_faults.sqlite3`입니다. 필요하면 각 PowerShell 창에서 `$env:MQTT_HOST`, `$env:MQTT_PORT`, `$env:REQUEST_INTERVAL_SECONDS`, `$env:IOT_DB_PATH`를 설정하세요. `.env.example`은 참고용이며 Python 코드가 자동으로 읽지 않습니다. 프론트엔드 API 주소를 바꿀 때만 `frontend/.env.local`에 `VITE_API_BASE_URL=http://127.0.0.1:8000/api`를 설정하세요. 기본값 `/api`는 Vite 프록시를 사용합니다.
-
-## 실행 방법
-
-각 명령은 별도 PowerShell 창에서 프로젝트 루트에서 실행합니다.
-
-```powershell
-# 1. 설치된 Mosquitto 실행 (기본 설치 경로)
-& 'C:\Program Files\mosquitto\mosquitto.exe' -v
-
-# 2. MQTT 수신 및 장애 감지
-.\.venv\Scripts\python.exe -m backend.mqtt_worker
-
-# 3. FastAPI
-.\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
-
-# 4. 장치 시뮬레이터
-.\.venv\Scripts\python.exe -m raspberry_pi.device_simulator --mode normal
-
-# 5. Vue 프론트엔드
-cd frontend
-npm run dev
-```
-
-브라우저에서 Vite가 안내하는 주소(기본 `http://localhost:5173`)로 접속합니다. API 문서는 `http://127.0.0.1:8000/docs`, 상태 확인은 `http://127.0.0.1:8000/api/health`입니다. Mosquitto 설치 경로가 다르면 실제 경로를 사용하세요. 시뮬레이터의 `--mode`는 `normal`, `disconnect`, `delay`, `invalid` 중 하나입니다. Raspberry Pi 등 다른 호스트에서 시뮬레이터를 실행할 때는 `--host`에 브로커 IP를 지정할 수 있습니다.
-
-`/api/health`의 `status`는 FastAPI 요청 처리 상태입니다. `worker`, `broker`, `deviceHeartbeat`, `overall`은 별도 상태입니다. Worker의 DB heartbeat가 3초 넘게 갱신되지 않으면 `stopped`로 표시하고, 이때 Broker·장치 상태는 `unknown`입니다. Worker가 살아 있으나 Broker 연결이 끊기면 장치 상태도 `unknown`이며 장치 고장으로 단정하지 않습니다. Broker가 연결된 상태에서 유효한 장치 상태 메시지가 10초 이상 없으면 `timeout`입니다. 장치 ID와 Topic은 PC 실습에서도 기존 `RPI-01`, `factory/RPI-01/*`를 유지합니다.
-
-실험 기록은 운영 DB 대신 `IOT_DB_PATH`로 분리한 실습 DB를 사용하세요. `scripts/record_experiment.py`에 동일 장애 유형의 서로 다른 이벤트 ID 5개와 `--require-five`를 주면 각 실행을 CSV 한 행으로 기록합니다. `CONNECTION_TIMEOUT`은 마지막 유효 상태 메시지 수신부터 탐지까지, `RESPONSE_DELAY`는 요청 등록부터 지연 탐지까지 측정합니다. `INVALID_MESSAGE`는 수신과 판정이 같은 시각 해상도에 기록되므로 소요 시간을 빈 값과 `측정 불가`로 남깁니다. AI 시간은 HTTP 요청 시작부터 응답 종료까지의 벽시계 시간이며 `ai_status=ready`인 행만 실제 AI 응답 성공으로 해석합니다. CSV의 빈 값과 요청 오류는 0초 처리로 해석하지 않습니다. 실험 CSV는 Git에서 제외합니다.
-
-## 구현 상태
-
-**구현 완료:** MQTT 상태·요청·응답 수신, 규칙 기반 연결 시간 초과·응답 지연·메시지 형식 오류 감지, SQLite 장애·로그·조치 기록, FastAPI 조회 및 조치 API, Vue 대시보드·장치·장애 화면, PC 장치 시뮬레이터의 네 가지 모드. 테스트는 `.\.venv\Scripts\python.exe -m pytest -q`로 실행합니다.
-
-**구현 완료:** `manuals/`의 장애 유형별 실습용 매뉴얼 검색, 실제 장애 로그와 검색 문서를 참고하는 Ollama AI 점검 안내 API, Vue 장애 상세 화면의 AI 응답 및 문서 제목·절·줄 위치 표시. AI 응답은 규칙 엔진의 판정과 별개입니다. 조치 사례는 여전히 실습용 예시 데이터입니다.
-
-**실기기 준비 완료:** Raspberry Pi OS용 MQTT 인증·재연결·선택적 CPU 온도 발행 코드와 설치·실험 가이드. 실제 Pi Ethernet 단절·재연결 검증은 아직 수행하지 않았습니다.
-
-**개발 예정:** 실제 Raspberry Pi 5 실기기 연결 검증, STM32 연동, 실제 운영 매뉴얼과 조치 사례 축적.
-
-## 로컬 AI 점검 안내
-
-Ollama를 설치해 서버를 실행하고 `exaone3.5:2.4b` 모델을 준비합니다. 이미 Ollama가 실행 중이면 서버 명령은 생략합니다.
-
-```powershell
-ollama serve
+cd frontend; npm ci; cd ..
 ollama pull exaone3.5:2.4b
-ollama list
 ```
 
-기본 API 주소는 `http://127.0.0.1:11434`입니다. 다른 주소나 모델을 사용하려면 FastAPI 실행 창에서 `$env:OLLAMA_BASE_URL`, `$env:OLLAMA_MODEL`, `$env:OLLAMA_TIMEOUT_SECONDS`를 설정합니다. 기본 생성 제한은 60초입니다. Ollama 서버가 없거나 시간 초과가 나면 AI 안내만 사용 불가로 표시하며, MQTT 수신과 장애 판정·조회 API는 계속 작동합니다. 상세 화면의 **다시 생성** 버튼으로 재시도할 수 있습니다.
+### 한 번에 실행 (시연용)
 
-`GET /api/manuals`는 실제 `manuals/*.md` 문서에서 점검 순서를 읽습니다. `GET /api/events/{id}/ai-guidance`는 해당 장애 유형의 문서 절을 검색하고 연결된 로그와 함께 로컬 모델에 전달합니다. 응답의 `sources`는 검색된 문서의 제목, 절, 파일 및 줄 위치를 담습니다. 매뉴얼이 없으면 모델을 호출하지 않고 근거 부족으로 답합니다. AI 문장은 가능한 점검 가설이므로 현장 조치와 복구 판단은 실제 로그로 확인해야 합니다.
+```powershell
+.\scripts\start_demo.ps1    # 시연용 DB를 새로 만들고 브로커, Worker, API, 웹, 가상 장치를 띄움
+.\scripts\device.ps1        # 장치 창을 닫았을 때 장치만 다시 실행
+.\scripts\rehearsal.ps1     # 응답 지연, 형식 오류, 수신 중단을 차례로 실제 발생시킴
+.\scripts\stop_demo.ps1     # 전부 종료
+```
+
+장치 창에서 Ctrl+C를 누르면 10초 뒤 장애가 판정되고, `device.ps1`로 다시 켜면 복구됩니다.
+
+### 따로 실행
+
+각 명령을 별도 PowerShell 창에서 프로젝트 루트 기준으로 실행합니다.
+
+```powershell
+& 'C:\Program Files\mosquitto\mosquitto.exe' -v
+.\.venv\Scripts\python.exe -m backend.mqtt_worker
+.\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+.\.venv\Scripts\python.exe -m raspberry_pi.device_simulator --mode normal
+cd frontend; npm run dev
+```
+
+- 웹: `http://localhost:5173`, API 문서: `http://127.0.0.1:8000/docs`, 상태: `http://127.0.0.1:8000/api/health`
+- 시뮬레이터 `--mode`: `normal`, `disconnect`, `delay`, `invalid`. 다른 호스트에서 실행하면 `--host`에 브로커 IP를 지정합니다.
+- 환경 변수: `MQTT_HOST`, `MQTT_PORT`, `REQUEST_INTERVAL_SECONDS`, `IOT_DB_PATH`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_TIMEOUT_SECONDS`(기본 60초). `.env.example`은 참고용이며 자동으로 읽지 않습니다.
+- Ollama가 꺼져 있거나 시간이 초과되면 AI 안내만 사용 불가로 표시되고, 수신과 판정, 조회는 계속 동작합니다.
+
+### 테스트
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+### 실험 기록
+
+실험은 `IOT_DB_PATH`로 분리한 실습 DB에서 합니다. `scripts/record_experiment.py`에 같은 장애 유형의 이벤트 ID 5개와 `--require-five`를 주면 CSV로 기록하고, `scripts/summarize_experiments.py`가 통계와 그래프를 만듭니다. 형식 오류의 소요 시간은 빈 값과 '측정 불가'로 남기며 0초로 처리하지 않습니다. 실험 CSV는 Git에서 제외합니다.
+
+## 폴더 구조
+
+```text
+backend/        main.py(API), mqtt_worker.py(수신), engine.py(판정), db.py, rag.py(매뉴얼 검색, AI 안내)
+frontend/       Vue 3 웹
+raspberry_pi/   PC와 Raspberry Pi OS 공용 MQTT 장치 에이전트, 시뮬레이터
+manuals/        장애 유형별 점검 매뉴얼 4종 (AI 안내의 근거 문서)
+scripts/        시연 실행, 리허설, 화면 캡처, 실험 기록
+experiments/    실험 기록 양식
+tests/          백엔드 테스트
+presentation/   발표 자료, 실험 요약, AI 근거 검토
+docs/images/    README 이미지
+```
+
+## 한계와 다음 단계
+
+- PC 시뮬레이터 장치 1대로만 검증했습니다. Raspberry Pi 5용 에이전트와 설치 절차([연동 가이드](RASPBERRY_PI_SETUP.md))는 준비돼 있지만, 실제 Ethernet 단절과 재연결 실험은 아직 하지 않았습니다.
+- 실험은 판정 15회, AI 응답 5회, AI 근거 대조 1건으로 표본이 작습니다.
+- 매뉴얼과 조치 사례는 실습용으로 직접 작성했습니다. 화면에서도 '예시'로 구분합니다.
+- 다음 단계: Raspberry Pi 5 실기기 단절 실험, 장치 여러 대 동시 감시, AI 답변에서 근거 밖 문장 차단.

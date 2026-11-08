@@ -60,7 +60,9 @@ def main():
             repository.update_worker_runtime(connected)
             if connected:
                 engine.tick()
-            if connected and time.monotonic() >= next_request:
+            # 장치가 살아 있을 때만 요청한다 (꺼진 장치에 대한 응답 지연 누적 방지)
+            # 최근 4초(상태 주기 2번) 안에 상태 메시지가 있을 때만 요청한다
+            if connected and engine.device_alive(within=4.0) and time.monotonic() >= next_request:
                 payload = engine.register_request()
                 result = client.publish(REQUEST_TOPIC, json.dumps(payload), qos=1)
                 if result.rc != mqtt.MQTT_ERR_SUCCESS:

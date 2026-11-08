@@ -30,9 +30,28 @@ class FaultEngine:
         self.repo.ensure_device(device_id)
         saved = self.repo.get_device(device_id)
         self.last_valid_mono = None
+        # last_status_mono는 실제 유효 상태 메시지 수신 시각만 기록한다.
+        # (브로커 연결 시 last_valid_mono를 현재로 맞추는 것과 구분)
+        self.last_status_mono = None
+        # 진행 중인 CONNECTION_TIMEOUT이 있으면 매 tick마다 다시 등록하지 않는다
+        self.timeout_active = False
+        # 장치 재시작 감지용: 마지막 유효 상태 메시지의 sequence
+        self.last_sequence = None
         if saved["last_seen"]:
             age = max(0, (self.clock.utcnow() - datetime.fromisoformat(saved["last_seen"])).total_seconds())
             self.last_valid_mono = self.clock.monotonic() - age
+            self.last_status_mono = self.last_valid_mono
+
+    def device_alive(self, within=TIMEOUT_SECONDS):
+        """최근 10초 안에 유효 상태 메시지를 받았으면 True.
+
+        Worker는 장치가 살아 있을 때만 요청을 보낸다. 장치가 꺼져 있는 동안
+        응답 없는 요청마다 RESPONSE_DELAY가 쌓이는 것을 막고, 그 상황은
+        CONNECTION_TIMEOUT 하나로 판정한다.
+        """
+        with self.lock:
+            return (self.last_status_mono is not None
+                    and self.clock.monotonic() - self.last_status_mono < within)
 
     def _decode(self, payload):
         try:
@@ -78,11 +97,26 @@ class FaultEngine:
             except ValueError as exc:
                 return self._invalid(STATUS_TOPIC, payload, str(exc), at)
             self.last_valid_mono = self.clock.monotonic()
+            self.last_status_mono = self.last_valid_mono
+            self.timeout_active = False
+            if self.last_sequence is not None and data["sequence"] <= self.last_sequence:
+                self._drop_requests_lost_to_restart(at)
+            self.last_sequence = data["sequence"]
             self.repo.update_device(self.device_id, "NORMAL", utc_iso(at), data)
             self.repo.recover_fault(self.device_id, "CONNECTION_TIMEOUT", at)
             self.repo.recover_fault(self.device_id, "INVALID_MESSAGE", at, STATUS_TOPIC)
             self.repo.add_log(self.device_id, STATUS_TOPIC, self._as_text(payload), "VALID", at)
             return True
+
+    def _drop_requests_lost_to_restart(self, at):
+        """sequence가 다시 작아졌다면 장치가 재시작된 것이다. 재시작 전에 보낸 요청은
+        새 프로세스가 알 수 없어 응답이 오지 않으므로 RESPONSE_DELAY로 판정하지 않는다."""
+        for request_id, pending in self.pending.items():
+            if not pending["timed_out"]:
+                pending["timed_out"] = True
+                pending["during_outage"] = True
+                self.repo.add_log(self.device_id, REQUEST_TOPIC, request_id,
+                    "NO_RESPONSE: 장치 재시작으로 요청 유실 (sequence 재시작)", at)
 
     def register_request(self, request_id=None):
         with self.lock:
@@ -123,6 +157,12 @@ class FaultEngine:
                 return False
             pending = self.pending.pop(request_id)
             elapsed = self.clock.monotonic() - pending["sent_mono"]
+            if pending.get("during_outage"):
+                # 통신 중단 중 보낸 요청이 브로커에 보관됐다가 장치 재연결 후 전달돼 응답이 온 경우.
+                # 장치 처리 지연이 아니므로 RESPONSE_DELAY로 기록하지 않는다.
+                self.repo.add_log(self.device_id, RESPONSE_TOPIC, self._as_text(payload),
+                    f"STALE: 통신 중단 중 보낸 요청의 재연결 후 응답 ({elapsed:.2f}s)", at)
+                return True
             self.repo.recover_fault(self.device_id, "INVALID_MESSAGE", at, RESPONSE_TOPIC)
             event_id = None
             if elapsed > RESPONSE_SECONDS:
@@ -137,15 +177,31 @@ class FaultEngine:
         with self.lock:
             at = self.clock.utcnow()
             now_mono = self.clock.monotonic()
-            if self.last_valid_mono is not None and now_mono - self.last_valid_mono >= TIMEOUT_SECONDS:
+            if (self.last_valid_mono is not None and now_mono - self.last_valid_mono >= TIMEOUT_SECONDS
+                    and not self.timeout_active):
                 started = at - timedelta(seconds=now_mono - self.last_valid_mono - TIMEOUT_SECONDS)
                 event_id = self.repo.create_fault(self.device_id, "CONNECTION_TIMEOUT", started, at,
                     "마지막 유효 상태 메시지 이후 10초 이상 미수신")
                 self.repo.update_device(self.device_id, "FAULT")
+                self.timeout_active = event_id is not None
                 if event_id and not self.repo.get_event_logs(event_id):
                     self.repo.add_log(self.device_id, STATUS_TOPIC, "", "TIMEOUT: 10초 이상 미수신", at, event_id)
+            device_silent = (self.last_valid_mono is not None
+                             and now_mono - self.last_valid_mono >= TIMEOUT_SECONDS)
             for request_id, pending in list(self.pending.items()):
                 elapsed = now_mono - pending["sent_mono"]
+                # 요청을 보낸 뒤 상태 메시지가 한 번도 오지 않았다면 장치가 끊긴 것이지
+                # 응답이 늦은 것이 아니다. 이때는 RESPONSE_DELAY를 만들지 않고 기다리다가
+                # CONNECTION_TIMEOUT이 판정되면 이 요청을 정리한다.
+                status_since_request = (self.last_status_mono is None
+                                        or self.last_status_mono > pending["sent_mono"])
+                if elapsed > RESPONSE_SECONDS and not pending["timed_out"] and not status_since_request:
+                    if device_silent:
+                        self.repo.add_log(self.device_id, REQUEST_TOPIC, request_id,
+                            "NO_RESPONSE: 장치 통신 중단 중 (CONNECTION_TIMEOUT으로 판정)", at)
+                        pending["timed_out"] = True
+                        pending["during_outage"] = True
+                    continue
                 if elapsed > RESPONSE_SECONDS and not pending["timed_out"]:
                     event_id = self.repo.create_fault(self.device_id, "RESPONSE_DELAY", pending["sent_at"], at,
                         f"요청 {request_id}: 3초 이내 응답 없음", request_id)

@@ -26,11 +26,18 @@ const systemLabel = computed(() => {
   if (state.deviceHeartbeat !== 'normal') return '장치 상태 메시지 대기'
   return 'PC MQTT 시뮬레이터 통신 정상'
 })
+const connectionLabel = computed(() => {
+  if (dataMode === 'mock') return '데모 데이터'
+  if (connectionState.value === 'error') return 'API 연결 끊김'
+  if (connectionState.value === 'connected') return 'API 연결 정상'
+  return 'API 연결 확인 중'
+})
+const connectionTone = computed(() => dataMode === 'mock' ? 'demo' : connectionState.value === 'error' ? 'error' : connectionState.value === 'connected' ? 'ok' : 'checking')
 </script>
 
 <template>
   <header class="app-header">
     <div class="header-heading"><span class="header-eyebrow">운영 현황 / {{ route.meta.title }}</span><h1>{{ route.meta.title }}</h1></div>
-    <div class="header-meta"><span class="demo-pill">{{ systemLabel }}</span><time>{{ clock }}</time><span class="system-state"><i></i>{{ dataMode === 'mock' ? '데모 화면 정상' : connectionState === 'connected' ? 'API 연결 정상' : 'API 연결 확인 중' }}</span></div>
+    <div class="header-meta"><span :class="['demo-pill', `pill-${connectionTone}`]">{{ systemLabel }}</span><time>{{ clock }}</time><span :class="['system-state', `state-${connectionTone}`]"><i aria-hidden="true"></i>{{ connectionLabel }}</span></div>
   </header>
 </template>
