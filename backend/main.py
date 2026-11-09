@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from .config import DB_PATH, DEVICE_ID, STATUS_TOPIC, OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TIMEOUT_SECONDS
+from .config import DB_PATH, DEVICE_ID, STATUS_TOPIC, OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TIMEOUT_SECONDS, OLLAMA_NUM_PREDICT, AI_EVIDENCE_LIMIT
 from .db import Repository, utc_now
 from . import rag
 
@@ -157,9 +157,10 @@ def create_app(repo=None):
             raise HTTPException(404, "장애를 찾을 수 없습니다")
         logs = repository.get_event_logs(event_id)
         evidence = rag.search(row["fault_type"], f"{row['description']} " + " ".join(
-            log["validation_result"] for log in logs[-8:]))
+            log["validation_result"] for log in logs[-8:]), limit=AI_EVIDENCE_LIMIT)
         result = rag.generate(row, logs, evidence, base_url=OLLAMA_BASE_URL,
-                              model=OLLAMA_MODEL, timeout=OLLAMA_TIMEOUT_SECONDS)
+                              model=OLLAMA_MODEL, timeout=OLLAMA_TIMEOUT_SECONDS,
+                              num_predict=OLLAMA_NUM_PREDICT)
         return {"eventId": event_id, "faultType": row["fault_type"], "origin": "ollama" if result["status"] == "ready" else "none",
                 "model": OLLAMA_MODEL if result["status"] == "ready" else None, **result}
 

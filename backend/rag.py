@@ -69,7 +69,7 @@ def list_manuals(directory=MANUAL_DIR):
     return result
 
 
-def generate(event, logs, evidence, *, base_url="http://127.0.0.1:11434", model="exaone3.5:2.4b", timeout=60):
+def generate(event, logs, evidence, *, base_url="http://127.0.0.1:11434", model="exaone3.5:2.4b", timeout=60, num_predict=700):
     if not evidence:
         return {"status": "no_evidence", "answer": NO_EVIDENCE, "sources": []}
     excerpts = "\n\n".join(f"[{index}] {item['title']} / {item['section']} ({item['path']}:{item['lineStart']}-{item['lineEnd']})\n{item['content']}"
@@ -87,8 +87,8 @@ def generate(event, logs, evidence, *, base_url="http://127.0.0.1:11434", model=
               f"발생: {event['started_at']}\n감지: {event['detected_at']}\n\n로그:\n{log_text}\n\n매뉴얼:\n{excerpts}")
     try:
         response = httpx.post(f"{base_url.rstrip('/')}/api/generate", json={
-            "model": model, "prompt": prompt, "stream": False, "think": False,
-            "options": {"temperature": 0, "num_predict": 700},
+            "model": model, "prompt": prompt, "stream": False, "think": False, "keep_alive": "30m",
+            "options": {"temperature": 0, "num_predict": num_predict},
         }, timeout=timeout)
         response.raise_for_status()
         answer = response.json().get("response", "").strip()

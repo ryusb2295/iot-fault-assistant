@@ -165,7 +165,7 @@ cd frontend; npm run dev
 
 - 웹: `http://localhost:5173`, API 문서: `http://127.0.0.1:8000/docs`, 상태 확인: `http://127.0.0.1:8000/api/health`
 - 시뮬레이터 `--mode`는 `normal`, `disconnect`, `delay`, `invalid` 중 하나를 선택합니다. 다른 호스트에서 실행할 때는 `--host`에 브로커 IP를 지정합니다.
-- 환경 변수는 `MQTT_HOST`, `MQTT_PORT`, `REQUEST_INTERVAL_SECONDS`, `IOT_DB_PATH`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_TIMEOUT_SECONDS`(기본 60초)를 사용합니다. `.env.example`은 참고용이며 자동으로 읽지 않습니다.
+- 환경 변수는 `MQTT_HOST`, `MQTT_PORT`, `REQUEST_INTERVAL_SECONDS`, `IOT_DB_PATH`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_TIMEOUT_SECONDS`(기본 60초), `OLLAMA_NUM_PREDICT`(생성 길이, 기본 700), `AI_EVIDENCE_LIMIT`(근거 절 수, 기본 6)를 사용합니다. 그래픽카드가 없는 노트북처럼 CPU로만 모델을 돌리면 응답이 느리므로 생성 길이와 근거 절 수를 줄이고 제한 시간을 늘려 실행합니다. `.env.example`은 참고용이며 자동으로 읽지 않습니다.
 - Ollama가 실행 중이 아니거나 응답 시간이 초과되면 AI 안내만 사용할 수 없다고 표시되며, 메시지 수신과 장애 판정, 조회 기능은 정상 동작합니다.
 
 ### 테스트
