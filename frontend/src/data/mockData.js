@@ -1,7 +1,7 @@
 const minutesAgo = (minutes) => new Date(Date.now() - minutes * 60_000).toISOString()
 
 export const device = {
-  id: 'RPI-01', name: 'PC MQTT 시뮬레이터', status: 'normal',
+  id: 'RPI-01', name: 'PC 시뮬레이터', status: 'normal',
   lastReceivedAt: minutesAgo(0.08), intervalSeconds: 5,
   topic: 'facility/rpi-01/status',
   recentMessage: { device_id: 'RPI-01', status: 'running', temperature: 36.8, timestamp: minutesAgo(0.08) },

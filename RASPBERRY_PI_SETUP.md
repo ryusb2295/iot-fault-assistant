@@ -69,6 +69,21 @@ export MQTT_PASSWORD
 
 **중복 실행 금지:** PC 시뮬레이터와 Pi 에이전트는 모두 장치 ID `RPI-01` 및 MQTT Client ID `simulator-rpi-01`을 사용한다. 동시에 실행하면 브로커가 한 연결을 끊고 재접속 경쟁이 발생한다. Pi를 시작하기 전에 PC 시뮬레이터를 종료하고, 실험마다 Pi 에이전트 한 개만 실행한다. MQTT Worker의 Client ID는 `fault-monitor-rpi-01`로 별개다.
 
+### 부팅 시 자동 실행 (전원 차단 실험용)
+
+전원을 뽑았다가 다시 꽂는 실험에서는 Pi가 부팅되자마자 에이전트가 스스로 실행되어야 한다. `raspberry_pi/rpi01-agent.service`의 `User`, 경로, `MQTT_HOST`, `MQTT_PORT`를 실제 환경에 맞게 확인한 뒤 등록한다. Windows 모바일 핫스팟을 쓰면 노트북 주소는 보통 `192.168.137.1`이다.
+
+```bash
+sudo cp raspberry_pi/rpi01-agent.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now rpi01-agent
+journalctl -u rpi01-agent -f
+```
+
+서비스가 실행 중일 때 같은 장치 ID로 에이전트를 수동 실행하면 연결 경쟁이 생긴다. 수동 실행이 필요하면 먼저 `sudo systemctl stop rpi01-agent`로 멈춘다. 자동 실행을 끄려면 `sudo systemctl disable --now rpi01-agent`를 사용한다.
+
+상태 메시지에는 `/proc/device-tree/model`에서 읽은 보드 이름이 `model` 필드로 들어간다. 웹은 이 값이 있으면 장치 이름을 `Raspberry Pi 5`처럼 표시하고 CPU 온도를 함께 보여준다. PC 시뮬레이터에는 이 파일이 없으므로 `PC 시뮬레이터`로 표시된다.
+
 ## 4. 실험 절차
 
 각 실험 전 `/api/health` 200, `/api/devices/RPI-01`의 최근 수신 시각, Worker의 구독 로그를 확인한다. 장치가 한 번 이상 유효한 상태 메시지를 보낸 **후** 중단 실험을 시작해야 `CONNECTION_TIMEOUT`을 판정한다. 매 실험의 모드를 바꿀 때는 Pi 에이전트를 `Ctrl+C`로 종료하고 다시 실행한다.

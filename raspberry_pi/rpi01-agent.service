@@ -1,0 +1,20 @@
+# Raspberry Pi에서 부팅할 때 장치 에이전트를 자동으로 실행하는 systemd 서비스
+# 설치: RASPBERRY_PI_SETUP.md의 "부팅 시 자동 실행" 참고
+# User, 경로, MQTT_HOST/PORT는 실제 환경에 맞게 수정한다.
+[Unit]
+Description=RPI-01 MQTT device agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ryu
+WorkingDirectory=/home/ryu/iot-fault-assistant
+Environment=MQTT_HOST=192.168.137.1
+Environment=MQTT_PORT=1884
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/ryu/iot-fault-assistant/.venv/bin/python -m raspberry_pi.device_simulator --mode normal
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

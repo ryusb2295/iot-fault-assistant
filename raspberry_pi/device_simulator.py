@@ -17,6 +17,7 @@ RESPONSE_TOPIC = f"factory/{DEVICE_ID}/response"
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 CPU_TEMP_PATH = Path("/sys/class/thermal/thermal_zone0/temp")
+MODEL_PATH = Path("/proc/device-tree/model")
 
 
 def timestamp():
@@ -31,11 +32,21 @@ def cpu_temperature_c(path=CPU_TEMP_PATH):
         return None
 
 
-def status_payload(sequence, temperature=None):
+def board_model(path=MODEL_PATH):
+    """Raspberry Pi 보드 이름(예: Raspberry Pi 5 Model B Rev 1.0). PC에서는 None."""
+    try:
+        return path.read_text(encoding="utf-8", errors="ignore").strip("\x00\n ") or None
+    except OSError:
+        return None
+
+
+def status_payload(sequence, temperature=None, model=None):
     payload = {"device_id": DEVICE_ID, "status": "RUNNING",
                "sequence": sequence, "timestamp": timestamp()}
     if temperature is not None:
         payload["cpu_temp_c"] = temperature
+    if model:
+        payload["model"] = model
     return payload
 
 
@@ -88,10 +99,13 @@ def main():
     client.connect_async(args.host, args.port, keepalive=30)
     client.loop_start()
     sequence = 0
+    model = board_model()
+    logger.info("장치: %s · 브로커: %s:%s", model or "PC 시뮬레이터", args.host, args.port)
     try:
         while True:
             if client.is_connected() and args.mode != "disconnect":
                 sequence += 1
+                temperature = None
                 if args.mode == "invalid":
                     if sequence % 3 == 1:
                         payload = json.dumps({"device_id": DEVICE_ID, "status": "RUNNING", "sequence": sequence})
@@ -101,12 +115,16 @@ def main():
                     else:
                         payload = "{invalid json"
                 else:
-                    payload = json.dumps(status_payload(sequence, cpu_temperature_c()))
+                    temperature = cpu_temperature_c()
+                    payload = json.dumps(status_payload(sequence, temperature, model))
                 client.publish(STATUS_TOPIC, payload, qos=1)
-                logger.info("상태 발행 #%s: %s", sequence, args.mode)
+                if args.mode == "normal" and temperature is not None:
+                    logger.info("상태 발행 #%s · CPU %.1f°C", sequence, temperature)
+                else:
+                    logger.info("상태 발행 #%s: %s", sequence, args.mode)
             time.sleep(2)
     except KeyboardInterrupt:
-        logger.info("시뮬레이터를 종료합니다")
+        logger.info("장치 에이전트를 종료합니다. 상태 메시지 발행을 멈춥니다")
     finally:
         for timer in timers:
             timer.cancel()

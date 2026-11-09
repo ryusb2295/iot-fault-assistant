@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-import { dataMode, getDashboard, getDevice, getEvents, getRecentActions, getChartPoints } from '../services/api'
+import { dataMode, monitoringState, getDashboard, getDevice, getEvents, getRecentActions, getChartPoints } from '../services/api'
 import { eventTypes } from '../data/mockData'
 import { formatTime, formatElapsed } from '../utils/format'
 import { computed } from 'vue'
@@ -27,6 +27,10 @@ const live = computed(() => {
   const status = device.value?.status
   if (status === 'normal') return { tone: 'ok', title: '정상 수신 중', note: '2초마다 상태 메시지를 받고 있습니다' }
   if (status === 'fault') return { tone: 'bad', title: '통신 끊김', note: '10초 넘게 상태 메시지가 없어 장애로 판정했습니다' }
+  const monitor = monitoringState.value
+  if (monitor && monitor.worker === 'running' && monitor.broker === 'connected') {
+    return { tone: 'unknown', title: '장치 메시지 대기 중', note: '감시 시스템은 정상입니다. 장치가 아직 상태 메시지를 보내지 않았습니다' }
+  }
   return { tone: 'unknown', title: '상태 확인 불가', note: '감시 시스템(Worker/Broker) 연결을 확인하세요' }
 })
 const gaugeTone = computed(() => live.value.tone === 'bad' ? 'bad' : gaugePercent.value >= 50 ? 'warn' : 'ok')
@@ -78,10 +82,10 @@ onUnmounted(() => { mounted = false; clearInterval(timer); clearTimeout(pollTime
     <template v-if="dashboardLoaded">
       <section class="live-hero" aria-label="RPI-01 실시간 상태">
         <div :class="['panel', 'live-panel', `live-${live.tone}`]">
-          <div class="live-top"><span class="live-dot" aria-hidden="true"></span><div><span class="live-eyebrow">RPI-01 · PC MQTT 시뮬레이터</span><h3>{{ live.title }}</h3><p>{{ live.note }}</p></div><RouterLink class="text-link" to="/devices">장치 상세 →</RouterLink></div>
+          <div class="live-top"><span class="live-dot" aria-hidden="true"></span><div><span class="live-eyebrow">RPI-01 · {{ device?.name ?? '장치' }}</span><h3>{{ live.title }}</h3><p>{{ live.note }}</p></div><RouterLink class="text-link" to="/devices">장치 상세 →</RouterLink></div>
           <div class="live-counter"><span class="live-label">마지막 수신 후</span><strong>{{ device?.lastReceivedAt ? formatElapsed(device.lastReceivedAt, now) : '—' }}</strong></div>
           <div class="live-gauge" role="meter" :aria-valuenow="Math.round(elapsedSeconds ?? 0)" aria-valuemin="0" aria-valuemax="10" aria-label="장애 판정까지 경과 시간"><span :class="`gauge-${gaugeTone}`" :style="{ width: `${gaugePercent}%` }"></span><i style="left: 20%"></i><em>2초 주기</em><em class="end">10초 → 장애 판정</em></div>
-          <div class="live-meta"><span>마지막 수신 <b>{{ formatTime(device?.lastReceivedAt) }}</b></span><span>Topic <code>{{ device?.topic }}</code></span></div>
+          <div class="live-meta"><span>마지막 수신 <b>{{ formatTime(device?.lastReceivedAt) }}</b></span><span>Topic <code>{{ device?.topic }}</code></span><span v-if="device?.cpuTempC != null">CPU 온도 <b>{{ device.cpuTempC.toFixed(1) }}°C</b></span></div>
         </div>
         <div class="kpi-stack">
           <RouterLink to="/events" :class="['panel', 'kpi', activeFaults > 0 ? 'kpi-bad' : 'kpi-ok']"><span>진행 중 장애</span><strong>{{ activeFaults }}<small>건</small></strong><em>{{ activeFaults > 0 ? '통신이 아직 돌아오지 않은 장애' : '모든 장애가 통신 정상화됨' }}</em></RouterLink>

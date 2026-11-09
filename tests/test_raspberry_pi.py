@@ -5,7 +5,8 @@ from datetime import datetime, timedelta, timezone
 
 from backend.db import Repository
 from backend.engine import FaultEngine
-from raspberry_pi.device_simulator import cpu_temperature_c, status_payload
+from backend.main import device_name
+from raspberry_pi.device_simulator import board_model, cpu_temperature_c, status_payload
 from scripts.record_experiment import event_record, main
 
 
@@ -24,6 +25,21 @@ def test_optional_pi_temperature_preserves_status_schema(tmp_path):
     sensor.write_text("invalid", encoding="ascii")
     assert cpu_temperature_c(sensor) is None
     assert "cpu_temp_c" not in status_payload(8, cpu_temperature_c(sensor))
+
+
+def test_board_model_marks_real_raspberry_pi(tmp_path):
+    model_file = tmp_path / "model"
+    model_file.write_bytes(b"Raspberry Pi 5 Model B Rev 1.0\x00")
+    model = board_model(model_file)
+    assert model == "Raspberry Pi 5 Model B Rev 1.0"
+    assert board_model(tmp_path / "missing") is None
+    payload = status_payload(3, 51.2, model)
+    assert payload["model"] == model
+    assert "model" not in status_payload(4, None, None)
+    engine = FaultEngine(Repository(tmp_path / "faults.sqlite3"))
+    assert engine.process_status(json.dumps(payload).encode()) is True
+    assert device_name(model) == "Raspberry Pi 5"
+    assert device_name(None) == "PC 시뮬레이터"
 
 
 def test_experiment_latency_uses_last_valid_status_for_connection_timeout(tmp_path):

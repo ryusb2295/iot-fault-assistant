@@ -53,14 +53,25 @@ def event_json(row):
     }
 
 
+def device_name(model):
+    """상태 메시지의 model 필드로 실기기와 PC 시뮬레이터를 구분해 표시한다."""
+    if model and "Raspberry Pi" in model:
+        parts = model.split()
+        return " ".join(parts[:3]) if len(parts) >= 3 else model
+    return model or "PC 시뮬레이터"
+
+
 def device_json(row, heartbeat="unknown"):
     effective = "normal" if heartbeat == "normal" else "fault" if heartbeat == "timeout" else "unknown"
+    recent = json.loads(row["recent_message"]) if row["recent_message"] else None
+    recent_dict = recent if isinstance(recent, dict) else {}
     return {
-        "id": row["device_id"], "name": "PC MQTT 시뮬레이터",
+        "id": row["device_id"], "name": device_name(recent_dict.get("model")),
+        "model": recent_dict.get("model"), "cpuTempC": recent_dict.get("cpu_temp_c"),
         "status": effective,
         "rawStatus": row["status"], "lastReceivedAt": row["last_seen"],
         "intervalSeconds": 2, "topic": STATUS_TOPIC,
-        "recentMessage": json.loads(row["recent_message"]) if row["recent_message"] else None,
+        "recentMessage": recent,
     }
 
 

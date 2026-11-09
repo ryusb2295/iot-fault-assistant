@@ -24,7 +24,7 @@ const systemLabel = computed(() => {
   if (state.broker !== 'connected') return 'MQTT Broker 연결 끊김'
   if (state.deviceHeartbeat === 'timeout') return '장치 상태 메시지 미수신 · 원인 미확인'
   if (state.deviceHeartbeat !== 'normal') return '장치 상태 메시지 대기'
-  return 'PC MQTT 시뮬레이터 통신 정상'
+  return 'RPI-01 통신 정상'
 })
 const connectionLabel = computed(() => {
   if (dataMode === 'mock') return '데모 데이터'
