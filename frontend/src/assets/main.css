@@ -421,3 +421,48 @@ a.past-action:hover strong, a.past-action:hover h4 { color: #2569c8; }
 .action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 24px; }
 .section-meta.is-error { color: #c03b3b; }
 @media (max-width: 1100px) { .live-hero { grid-template-columns: 1fr; } .kpi-stack { grid-template-rows: none; grid-template-columns: repeat(3, 1fr); } .action-grid { grid-template-columns: 1fr; } }
+
+/* Plain-language guidance at the same density as the rest of the desktop app. */
+.operator-knowledge { gap: 12px; }
+.operator-knowledge .page-intro p { font-size: 14px; }
+.operator-filter { display: flex; flex-wrap: wrap; gap: 8px; }
+.operator-filter button { min-height: 36px; padding: 6px 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #34445a; font: inherit; font-size: 14px; cursor: pointer; }
+.operator-filter button.active { border-color: #2b6aa8; background: #e9f3ff; color: #164a78; font-weight: 700; }
+.operator-filter button:focus-visible { outline: 2px solid #1b5e9b; outline-offset: 2px; }
+.operator-knowledge-tabs .el-tabs__item { height: 42px; font-size: 14px; font-weight: 600; }
+.operator-guide-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding-top: 2px; align-items: start; }
+.operator-guide { padding: 16px 18px !important; min-width: 0; }
+.operator-guide h3 { margin: 0 0 5px; font-size: 17px; }
+.operator-guide > p { margin: 0 0 10px; font-size: 14px; line-height: 1.5; }
+.operator-guide > ol { display: grid; gap: 6px; margin: 0 0 12px; padding-left: 23px; }
+.operator-guide > ol li { padding-left: 2px; font-size: 14px; line-height: 1.5; }
+.operator-guide > ol li::marker { color: #1b5e9b; font-weight: 700; }
+.operator-technical { padding-top: 9px; border-top: 1px solid #dce3eb; color: #43546a; }
+.operator-technical summary { width: fit-content; color: #1b5e9b; font-size: 13px; font-weight: 600; cursor: pointer; }
+.operator-technical h4 { margin: 10px 0 6px; font-size: 14px; }
+.operator-technical li, .operator-technical p { margin-bottom: 6px; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.operator-note { margin: 0 0 10px; color: #526175; font-size: 13px; }
+@media (max-width: 900px) { .operator-guide-list { grid-template-columns: 1fr; } }
+
+/* Response screen: immediate steps first, technical evidence on demand. */
+.response-simple { gap: 12px; }
+.response-simple__status { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px 22px !important; border-left: 5px solid #c84343; background: #fff8f7; }
+.response-simple__status.is-recovered { border-left-color: #25966b; background: #f5fcf8; }
+.response-simple__label { color: #63758b; font-size: 13px; }
+.response-simple__status h3 { margin: 5px 0; font-size: 24px; }
+.response-simple__status p { margin: 0; color: #4b5c71; font-size: 14px; }
+.response-simple__status > strong { flex-shrink: 0; color: #b83232; font-size: 19px; }
+.response-simple__status.is-recovered > strong { color: #23845c; }
+.response-simple__main { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+.response-simple__main > .panel { padding: 18px 20px; }
+.response-simple__main .section-head h3 { font-size: 18px; }
+.response-simple__main .checklist.scroll-region { max-height: none; overflow: visible; }
+.response-simple__main .checklist-item { white-space: normal; line-height: 1.5; }
+.response-simple__more { padding: 16px 20px !important; }
+.response-simple__more > summary { color: #245f9d; font-size: 15px; font-weight: 700; cursor: pointer; }
+.response-simple__technical { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; padding-top: 18px; }
+.response-simple__technical h3 { margin: 18px 0 8px; font-size: 16px; }
+.response-simple__technical h3:first-child { margin-top: 0; }
+.response-simple__technical p, .response-simple__technical li { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.response-simple__ai { margin-top: 20px; }
+@media (max-width: 900px) { .response-simple__main, .response-simple__technical { grid-template-columns: 1fr; } }
